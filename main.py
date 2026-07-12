@@ -15,11 +15,17 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    file = request.files.get("file")
-    if file and file.filename:
-        file.save(os.path.join(UPLOAD_FOLDER, file.filename))
+    files = request.files.getlist("file")
+    uploaded = []
+    for file in files:
+        if file and file.filename:
+            file.save(os.path.join(UPLOAD_FOLDER, file.filename))
+            uploaded.append(file.filename)
+    if uploaded:
         return redirect(
-            url_for("index", success=f"File '{file.filename}' uploaded successfully!")
+            url_for(
+                "index", success=f"Files uploaded successfully: {', '.join(uploaded)}"
+            )
         )
     return redirect(url_for("index"))
 
