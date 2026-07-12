@@ -18,12 +18,20 @@ def get_unique_filename(filename):
     if not os.path.exists(filepath):
         return filename
 
-    counter = 1
-    while True:
-        new_filename = f"{base}_{counter}{ext}"
-        if not os.path.exists(os.path.join(UPLOAD_FOLDER, new_filename)):
-            return new_filename
-        counter += 1
+    existing_files = os.listdir(UPLOAD_FOLDER)
+    prefix = f"{base}_"
+    max_counter = 0
+
+    for f in existing_files:
+        if f.startswith(prefix) and f.endswith(ext):
+            try:
+                counter = int(f[len(prefix) : -len(ext)])
+                if counter > max_counter:
+                    max_counter = counter
+            except ValueError:
+                continue
+
+    return f"{base}_{max_counter + 1}{ext}"
 
 
 @app.route("/upload", methods=["POST"])
@@ -43,10 +51,11 @@ def upload():
 @app.route("/files")
 def files():
     file_list = []
-    for filename in sorted(os.listdir(UPLOAD_FOLDER)):
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        if os.path.isfile(filepath):
-            file_list.append({"name": filename, "size": os.path.getsize(filepath)})
+    with os.scandir(UPLOAD_FOLDER) as entries:
+        for entry in entries:
+            if entry.is_file():
+                file_list.append({"name": entry.name, "size": entry.stat().st_size})
+    file_list.sort(key=lambda x: x["name"])
     return jsonify(file_list)
 
 
