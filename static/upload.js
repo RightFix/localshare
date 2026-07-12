@@ -1,3 +1,47 @@
+const COMPRESSED_EXTENSIONS = ['.gz', '.zip', '.bz2', '.7z', '.rar'];
+
+function isCompressedFile(filename) {
+    const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
+    return COMPRESSED_EXTENSIONS.includes(ext);
+}
+
+async function compressFile(file) {
+    const compressedStream = file.stream().pipeThrough(
+        new CompressionStream('gzip')
+    );
+    const compressedResponse = new Response(compressedStream);
+    return compressedResponse.blob();
+}
+
+async function uploadSingleFile(file, alertBox, loadFiles, showAlert) {
+    const originalName = file.name;
+    const shouldCompress = !isCompressedFile(originalName);
+
+    let body;
+    let headers = {};
+
+    if (shouldCompress) {
+        const compressed = await compressFile(file);
+        headers = {
+            'X-Compressed': 'gzip',
+            'X-Filename': originalName
+        };
+        body = compressed;
+    } else {
+        const formData = new FormData();
+        formData.append('file', file);
+        body = formData;
+    }
+
+    const response = await fetch('/upload', {
+        method: 'POST',
+        headers,
+        body: body
+    });
+
+    return response;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
@@ -87,38 +131,42 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadBtn.addEventListener('click', async () => {
         if (filesToUpload.length === 0) return;
 
-        const formData = new FormData();
-        filesToUpload.forEach(file => formData.append('file', file));
-
         uploadBtn.disabled = true;
         uploadBtn.classList.add('loading');
         uploadBtn.querySelector('.spinner').classList.add('active');
         uploadBtn.querySelector('span').textContent = 'Uploading...';
 
-        try {
-            const response = await fetch('/upload', {
-                method: 'POST',
-                body: formData
-            });
+        const errors = [];
+        const uploaded = [];
 
-            const data = await response.json();
+        for (const file of filesToUpload) {
+            try {
+                const response = await uploadSingleFile(file, alertBox, loadFiles, showAlert);
+                const data = await response.json();
 
-            if (response.ok) {
-                showAlert('success', data.message);
-                filesToUpload = [];
-                renderSelectedFiles();
-                await loadFiles();
-            } else {
-                showAlert('error', data.error || 'Upload failed');
+                if (response.ok) {
+                    uploaded.push(data.message);
+                } else {
+                    errors.push(data.error || `Failed to upload ${file.name}`);
+                }
+            } catch (error) {
+                errors.push(`Error uploading ${file.name}: ${error.message}`);
             }
-        } catch (error) {
-            showAlert('error', 'An error occurred during upload');
-        } finally {
-            uploadBtn.disabled = false;
-            uploadBtn.classList.remove('loading');
-            uploadBtn.querySelector('.spinner').classList.remove('active');
-            uploadBtn.querySelector('span').textContent = 'Upload Files';
         }
+
+        if (errors.length > 0) {
+            showAlert('error', errors.join('; '));
+        } else if (uploaded.length > 0) {
+            showAlert('success', uploaded.join('; '));
+            filesToUpload = [];
+            renderSelectedFiles();
+            await loadFiles();
+        }
+
+        uploadBtn.disabled = false;
+        uploadBtn.classList.remove('loading');
+        uploadBtn.querySelector('.spinner').classList.remove('active');
+        uploadBtn.querySelector('span').textContent = 'Upload Files';
     });
 
     function showAlert(type, message) {
