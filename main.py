@@ -11,14 +11,30 @@ def index():
     return render_template("index.html")
 
 
+def get_unique_filename(filename):
+    base, ext = os.path.splitext(filename)
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+
+    if not os.path.exists(filepath):
+        return filename
+
+    counter = 1
+    while True:
+        new_filename = f"{base}_{counter}{ext}"
+        if not os.path.exists(os.path.join(UPLOAD_FOLDER, new_filename)):
+            return new_filename
+        counter += 1
+
+
 @app.route("/upload", methods=["POST"])
 def upload():
     files = request.files.getlist("file")
     uploaded = []
     for file in files:
         if file and file.filename:
-            file.save(os.path.join(UPLOAD_FOLDER, file.filename))
-            uploaded.append(file.filename)
+            unique_name = get_unique_filename(file.filename)
+            file.save(os.path.join(UPLOAD_FOLDER, unique_name))
+            uploaded.append(unique_name)
     if uploaded:
         return jsonify({"message": f"Files uploaded: {', '.join(uploaded)}"}), 200
     return jsonify({"error": "No files uploaded"}), 400
