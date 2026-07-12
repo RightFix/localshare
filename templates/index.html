@@ -7,27 +7,41 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>LocalShare</h1>
-    <p>Upload any file type to share locally.</p>
-    {% if success %}
-    <div class="success">{{ success }}</div>
-    {% endif %}
-    <div class="upload-form">
-        <form method="post" action="/upload" enctype="multipart/form-data">
-            <input type="file" name="file" class="file-input" multiple required>
-            <br>
-            <button type="submit" class="btn">Upload File</button>
-        </form>
+    <div class="container">
+        <h1>LocalShare</h1>
+        <p class="subtitle">Upload and share files locally</p>
+
+        <div id="alert" class="alert"></div>
+
+        <div class="upload-area">
+            <div id="dropZone" class="drop-zone">
+                <div class="icon">&#128193;</div>
+                <p>Drag & drop files here or click to browse</p>
+                <p>Supports multiple files</p>
+            </div>
+            <input type="file" id="fileInput" class="file-input" multiple>
+
+            <div id="selectedFiles" class="selected-files">
+                <h4>Selected Files:</h4>
+                <ul id="fileList" class="file-list"></ul>
+            </div>
+
+            <div style="text-align: center;">
+                <button id="uploadBtn" class="btn" disabled>
+                    Upload Files
+                    <span class="spinner"></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="files-section">
+            <h2>Uploaded Files</h2>
+            <ul id="filesList" class="files-list">
+                <div class="empty-state">Loading...</div>
+            </ul>
+        </div>
     </div>
-    <div class="files-list">
-        <h2>Previously Uploaded Files</h2>
-        {% if files %}
-            {% for file in files %}
-            <div class="file-item">{{ file }}</div>
-            {% endfor %}
-        {% else %}
-            <p>No files uploaded yet.</p>
-        {% endif %}
-    </div>
+
+    <script src="{{ url_for('static', filename='upload.js') }}"></script>
 </body>
 </html>
