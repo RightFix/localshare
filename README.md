@@ -99,4 +99,4 @@ MIT License
 
 ## Contributing
 
-欢迎大家参与 - Everyone is welcome to join in the fun! Feel free to fork, submit issues, and make pull requests.
+Everyone is welcome to join in the fun! Feel free to fork, submit issues, and make pull requests.
