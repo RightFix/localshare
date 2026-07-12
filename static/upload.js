@@ -4,16 +4,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedFiles = document.getElementById('selectedFiles');
     const fileList = document.getElementById('fileList');
     const uploadBtn = document.getElementById('uploadBtn');
-    const alert = document.getElementById('alert');
+    const alertBox = document.getElementById('alert');
     const filesList = document.getElementById('filesList');
-    const refreshBtn = document.getElementById('refreshBtn');
 
     let filesToUpload = [];
 
     dropZone.addEventListener('click', () => fileInput.click());
 
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
+        dropZone.addEventListener(event, e => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
+
+    dropZone.addEventListener('dragover', () => {
         dropZone.classList.add('dragover');
     });
 
@@ -21,37 +26,49 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.classList.remove('dragover');
     });
 
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
+    dropZone.addEventListener('drop', e => {
         dropZone.classList.remove('dragover');
         handleFiles(e.dataTransfer.files);
     });
 
-    fileInput.addEventListener('change', (e) => {
+    fileInput.addEventListener('change', e => {
         handleFiles(e.target.files);
+        fileInput.value = '';
     });
 
     function handleFiles(files) {
-        filesToUpload = Array.from(files);
+        const newFiles = Array.from(files).filter(f => f.size > 0);
+        filesToUpload = [...filesToUpload, ...newFiles];
         renderSelectedFiles();
     }
 
     function renderSelectedFiles() {
         if (filesToUpload.length === 0) {
             selectedFiles.classList.remove('active');
+            uploadBtn.disabled = true;
             return;
         }
 
         selectedFiles.classList.add('active');
+        uploadBtn.disabled = false;
+
         fileList.innerHTML = filesToUpload.map((file, index) => `
             <li>
-                <span>${file.name} (${formatSize(file.size)})</span>
+                <div class="file-info">
+                    <div class="file-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                    </div>
+                    <span>${file.name}</span>
+                </div>
                 <span class="remove" data-index="${index}">&times;</span>
             </li>
         `).join('');
 
         document.querySelectorAll('.remove').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', e => {
                 const index = parseInt(e.target.dataset.index);
                 filesToUpload.splice(index, 1);
                 renderSelectedFiles();
@@ -62,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatSize(bytes) {
         if (bytes === 0) return '0 B';
         const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     }
@@ -74,8 +91,9 @@ document.addEventListener('DOMContentLoaded', () => {
         filesToUpload.forEach(file => formData.append('file', file));
 
         uploadBtn.disabled = true;
+        uploadBtn.classList.add('loading');
         uploadBtn.querySelector('.spinner').classList.add('active');
-        uploadBtn.textContent = 'Uploading... ';
+        uploadBtn.querySelector('span').textContent = 'Uploading...';
 
         try {
             const response = await fetch('/upload', {
@@ -97,15 +115,16 @@ document.addEventListener('DOMContentLoaded', () => {
             showAlert('error', 'An error occurred during upload');
         } finally {
             uploadBtn.disabled = false;
+            uploadBtn.classList.remove('loading');
             uploadBtn.querySelector('.spinner').classList.remove('active');
-            uploadBtn.textContent = 'Upload Files';
+            uploadBtn.querySelector('span').textContent = 'Upload Files';
         }
     });
 
     function showAlert(type, message) {
-        alert.className = `alert ${type} active`;
-        alert.textContent = message;
-        setTimeout(() => alert.classList.remove('active'), 5000);
+        alertBox.className = `alert ${type} active`;
+        alertBox.textContent = message;
+        setTimeout(() => alertBox.classList.remove('active'), 4000);
     }
 
     async function loadFiles() {
@@ -114,7 +133,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const files = await response.json();
 
             if (files.length === 0) {
-                filesList.innerHTML = '<div class="empty-state">No files uploaded yet</div>';
+                filesList.innerHTML = `
+                    <div class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        <p>No files uploaded yet</p>
+                    </div>
+                `;
                 return;
             }
 
@@ -126,11 +152,12 @@ document.addEventListener('DOMContentLoaded', () => {
             `).join('');
         } catch (error) {
             console.error('Failed to load files:', error);
+            filesList.innerHTML = `
+                <div class="empty-state">
+                    <p>Failed to load files</p>
+                </div>
+            `;
         }
-    }
-
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', loadFiles);
     }
 
     loadFiles();
