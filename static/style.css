@@ -354,3 +354,130 @@ body {
 .files-list li {
     animation: fadeIn 0.3s ease;
 }
+
+.progress-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 150px;
+}
+
+.progress-bar {
+    flex: 1;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 3px;
+    transition: width 0.2s ease;
+}
+
+.progress-text {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.file-list li.file-uploading {
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.file-list li.file-uploading .file-info {
+    flex: 1;
+    min-width: 150px;
+}
+
+.file-list li.file-uploading .progress-container {
+    width: 100%;
+    order: 3;
+    margin-top: 8px;
+}
+
+.file-list li.file-done {
+    background: #dcfce7;
+}
+
+.file-list li .status-done {
+    color: var(--success);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.file-list li.file-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+}
+
+.file-list li .file-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.file-list li .file-details .error-msg {
+    font-size: 0.75rem;
+    color: var(--error);
+}
+
+.file-list li .retry {
+    padding: 6px 12px;
+    background: var(--primary);
+    color: white;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.file-list li .retry:hover {
+    background: var(--primary-hover);
+}
+
+.download-list li {
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.download-list li .file-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 150px;
+}
+
+.download-list li .file-name {
+    font-weight: 500;
+    color: var(--text);
+    font-size: 0.95rem;
+}
+
+.download-list li .file-size {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--primary);
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.download-btn:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
