@@ -10,7 +10,7 @@ set -euo pipefail
 #   ./extension/install.sh --force  # Force reinstall (remove existing first)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EXT_UUID="localshare@gnome.org"
+EXT_UUID="localshare@rightfix.com"
 EXT_TARGET="$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
 FORCE="${1:-}"
 

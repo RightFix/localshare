@@ -37,7 +37,7 @@ cd LocalShare
 ```
 
 The install script will:
-- Deploy the extension to `~/.local/share/gnome-shell/extensions/localshare@gnome.org/`
+- Deploy the extension to `~/.local/share/gnome-shell/extensions/localshare@rightfix.com/`
 - Create a Python virtual environment inside the extension directory
 - Install all Python dependencies
 - Compile GSettings schemas
@@ -57,7 +57,7 @@ cd LocalShare
 Symlink the extension for development:
 
 ```bash
-ln -sf "$(pwd)/extension" ~/.local/share/gnome-shell/extensions/localshare@gnome.org
+ln -sf "$(pwd)/extension" ~/.local/share/gnome-shell/extensions/localshare@rightfix.com
 ```
 
 ## Usage
@@ -118,13 +118,11 @@ uv run python extension/backend/run.py
 ## Publishing to GNOME Extensions
 
 ```bash
-# Package the extension (zip root dir must match UUID)
-cp -r extension localshare@gnome.org
-zip -r localshare@gnome.org.zip localshare@gnome.org/
-rm -rf localshare@gnome.org
+# Package the extension (zip contents at root, filename = UUID)
+cd extension && zip -r ../localshare@rightfix.com.zip . -x 'install.sh' && cd ..
 ```
 
-Then upload `localshare@gnome.org.zip` at https://extensions.gnome.org/upload/
+Then upload `localshare@rightfix.com.zip` at https://extensions.gnome.org/upload/
 
 ## Security
 
