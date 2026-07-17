@@ -1,0 +1,10 @@
+{
+    "uuid": "localshare@gnome.org",
+    "name": "Local Share",
+    "description": "Transfer files between devices on your local network through a web browser",
+    "version": "0.1.0",
+    "shell-version": ["48", "49", "50"],
+    "url": "https://github.com/RightFix/LocalShare",
+    "creator": "Righteousness",
+    "license": "MIT"
+}

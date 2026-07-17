@@ -1,0 +1,18 @@
+/* LocalShare Extension Styles */
+
+.localshare-indicator {
+    padding: 4px;
+}
+
+.localshare-popover {
+    padding: 12px;
+    min-width: 280px;
+}
+
+.localshare-status-active {
+    color: #2ec27e;
+}
+
+.localshare-status-inactive {
+    color: #5e5e5e;
+}

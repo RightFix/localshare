@@ -1,102 +1,128 @@
 # LocalShare
 
-Simple file sharing over local network.
+Share files between devices on your local network through a web browser.
 
-This repository was created from the need to transfer files from my Windows PC to Ubuntu. Everyone is welcome to join in the fun.
+The receiving device needs **zero installation** — just a browser. Works with Android, iPhone, Windows, macOS, Linux, and anything else with a modern browser.
 
-## Description
-
-LocalShare is a lightweight file transfer tool designed to quickly share files between devices on the same network. It provides a simple one-way connection to upload files from any device directly to your PC.
+```
+GNOME Shell Extension  ──HTTP──►  FastAPI Backend  ──►  Filesystem
+```
 
 ## Features
 
-- Multi-file upload support
-- Gzip compression during transfer for faster uploads
-- Auto-increment handling for duplicate filenames
-- Modern drag-and-drop web interface
-- Network accessible (works from any device on the same WiFi)
-- Decompression endpoint for compressed files
+- **One-click sharing** from the GNOME Shell top panel
+- **Desktop notifications** for connection requests and uploads
+- **Per-client approval** — no passwords, no accounts
+- **Drag-and-drop upload** from any browser on your network
+- **File browsing and download** with folder navigation
+
+- **Responsive web UI** works on phones and tablets
+- **Multiple simultaneous users
+- **No file size limits**
+- **No sharing timeout** — stays active until you turn it off
 
 ## Requirements
 
 - Python 3.12+
-- Flask
+- GNOME Shell 48, 49, or 50
 
 ## Installation
 
-Using uv (recommended):
+### Production Install (Recommended)
 
 ```bash
-uv sync
+git clone https://github.com/RightFix/LocalShare.git
+cd LocalShare
+./extension/install.sh
 ```
 
-Or using pip:
+The install script will:
+- Deploy the extension to `~/.local/share/gnome-shell/extensions/localshare@gnome.org/`
+- Create a Python virtual environment inside the extension directory
+- Install all Python dependencies
+- Compile GSettings schemas
+- Enable the extension
+
+Then restart GNOME Shell (Alt+F2, type `r`, Enter).
+
+### Development Setup
 
 ```bash
-pip install flask
+git clone https://github.com/RightFix/LocalShare.git
+cd LocalShare
+./extension/setup.sh          # Create venv and install deps
+./extension/setup.sh run      # Start the backend
+```
+
+Symlink the extension for development:
+
+```bash
+ln -sf "$(pwd)/extension" ~/.local/share/gnome-shell/extensions/localshare@gnome.org
 ```
 
 ## Usage
 
-1. Run the server:
+### From the panel
+
+1. Click the LocalShare icon in the top-right panel
+2. Click **Send** to share files from your PC, or **Receive** to accept uploads
+3. Other devices access the web UI at the displayed URL
+4. Approve or reject connection requests from the menu
+
+## Development
 
 ```bash
-python main.py
+# Install dev dependencies
+uv sync --dev
+
+# Run tests
+uv run pytest
+
+# Lint
+uv run ruff check
+
+# Start backend directly (without extension)
+uv run python extension/backend/run.py
 ```
 
-2. Access the web interface from any device on your network:
+### Project structure
 
 ```
-http://<YOUR-PC-IP>:5000
+├── extension/             # Self-contained GNOME Shell extension + backend
+│   ├── backend/           # Python FastAPI backend
+│   │   ├── main.py        # App factory, lifespan, router includes
+│   │   ├── run.py         # Internal API entry point
+│   │   ├── api/           # Route handlers (browser, files, internal)
+│   │   ├── auth/          # Session tokens, CSRF protection
+│   │   ├── models/        # Pydantic data models
+│   │   ├── storage/       # Atomic JSON file storage
+│   │   ├── services/      # Business logic (server management, network)
+│   │   ├── websocket/     # EventBus pub/sub, WS handlers
+│   │   └── static/        # Web UI (index.html, CSS, JS)
+│   ├── src/main.js        # Panel indicator and menu
+│   ├── prefs.js           # Extensions app preferences dialog
+│   ├── services/
+│   │   ├── http.js        # Shared HTTP helpers
+│   │   └── backend.js     # Backend process lifecycle manager
+│   ├── schemas/           # GSettings schema
+│   ├── metadata.json      # Extension metadata
+│   ├── setup.sh           # Development setup script
+│   ├── install.sh         # Production install script
+│   └── requirements.txt   # pip dependencies
+├── tests/                 # Test suite (73 tests)
+├── docs/                  # Architecture documentation
+├── shared/                # Shared constants
+└── pyproject.toml         # Project config + uv dependencies
 ```
 
-3. Select and upload files from your device
+## Security
 
-The uploaded files will be saved in the `upload/` folder.
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Web interface |
-| `/upload` | POST | Upload files (supports gzip compressed) |
-| `/files` | GET | List all uploaded files |
-| `/decompress/<filename>` | POST | Decompress a gzip file |
-
-### Upload Examples
-
-Using curl:
-
-```bash
-# Regular upload
-curl -X POST -F "file=@myfile.txt" http://localhost:5000/upload
-
-# Compressed upload
-gzip -c myfile.txt | curl -X POST -H "X-Compressed: gzip" -H "X-Filename: myfile.txt" --data-binary @- http://localhost:5000/upload
-```
-
-### Decompress Example
-
-```bash
-curl -X POST http://localhost:5000/decompress/myfile.txt.gz
-```
-
-## Changelog
-
-### v0.1.0 - 2025-07-12
-
-- Initial release
-- Basic file upload functionality
-- Multi-file support
-- Modern UI with drag & drop
-- Gzip compression during upload
-- Auto-increment for duplicate files
-- Decompression endpoint
+- **No passwords** — desktop approval via notification
+- **Session tokens** — UUID-based, stored in HttpOnly cookies
+- **CSRF protection** — double-submit cookie pattern
+- **Path traversal prevention** — resolved paths validated against allowed directories
+- **Atomic writes** — JSON files written atomically to prevent corruption
 
 ## License
 
-MIT License
-
-## Contributing
-
-Everyone is welcome to join in the fun! Feel free to fork, submit issues, and make pull requests.
+MIT

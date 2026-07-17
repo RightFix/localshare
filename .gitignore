@@ -8,4 +8,18 @@ wheels/
 
 # Virtual environments
 .venv
+extension/venv/
 upload/
+
+# Runtime data
+backend/data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo

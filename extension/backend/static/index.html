@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalShare</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+            </div>
+            <div>
+                <h1>LocalShare</h1>
+                <p>Transfer files between devices</p>
+            </div>
+        </div>
+
+        <div id="alert" class="alert"></div>
+
+        <div id="waiting" class="card">
+            <div class="waiting">
+                <div class="spinner"></div>
+                <h2>Waiting for approval...</h2>
+                <p>Your connection is pending approval from this device</p>
+            </div>
+        </div>
+
+        <div id="denied" class="card">
+            <div class="denied show">
+                <div class="denied-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="15" y1="9" x2="9" y2="15"/>
+                        <line x1="9" y1="9" x2="15" y2="15"/>
+                    </svg>
+                </div>
+                <h2>Connection denied</h2>
+                <p>Your access was rejected by the device owner</p>
+            </div>
+        </div>
+
+        <div id="menu" class="card">
+            <div class="menu show">
+                <div class="card-header">
+                    <span class="card-title">Choose Action</span>
+                </div>
+                <div class="menu-grid">
+                    <button class="menu-btn" id="uploadBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <span>Upload Files</span>
+                    </button>
+                    <button class="menu-btn" id="browseBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                        </svg>
+                        <span>Browse Shared Files</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="uploadView" class="card">
+            <div class="view show">
+                <div class="view-header">
+                    <button class="back-btn" id="backFromUpload">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                        Back
+                    </button>
+                    <span class="card-title">Upload Files</span>
+                </div>
+                <div class="drop-zone" id="dropZone">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <p>Drag & drop files here</p>
+                    <p>or click to browse</p>
+                </div>
+                <input type="file" class="file-input" id="fileInput" multiple>
+                <ul class="file-list" id="selectedFiles"></ul>
+                <button class="btn upload-btn" id="uploadBtn2" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Upload Files
+                </button>
+            </div>
+        </div>
+
+        <div id="filesView" class="card">
+            <div class="view show">
+                <div class="view-header">
+                    <button class="back-btn" id="backFromFiles">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                        Back
+                    </button>
+                    <span class="card-title">Shared Files</span>
+                </div>
+                <div class="breadcrumb" id="breadcrumb">
+                    <span class="breadcrumb-item">Shared</span>
+                </div>
+                <ul class="files-list" id="filesList">
+                    <li class="empty-state">Loading files...</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
