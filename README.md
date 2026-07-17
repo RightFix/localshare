@@ -115,6 +115,17 @@ uv run python extension/backend/run.py
 └── pyproject.toml         # Project config + uv dependencies
 ```
 
+## Publishing to GNOME Extensions
+
+```bash
+# Package the extension (zip root dir must match UUID)
+cp -r extension localshare@gnome.org
+zip -r localshare@gnome.org.zip localshare@gnome.org/
+rm -rf localshare@gnome.org
+```
+
+Then upload `localshare@gnome.org.zip` at https://extensions.gnome.org/upload/
+
 ## Security
 
 - **No passwords** — desktop approval via notification

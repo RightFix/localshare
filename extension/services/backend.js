@@ -2,12 +2,17 @@
  *
  * Manages the Python FastAPI backend subprocess lifecycle.
  * The backend runs on 127.0.0.1:8765 and is spawned on demand
- * when the user clicks "Start Sharing".
+ * when the user clicks "Send" or "Receive".
+ *
+ * On first run, auto-creates a Python venv and installs
+ * dependencies so the extension works out of the box when
+ * installed from extensions.gnome.org.
  */
 
 'use strict';
 
 const { Gio, GLib } = imports.gi;
+const Main = imports.ui.main;
 const Self = imports.misc.extensionUtils.getCurrentExtension();
 const { httpGet } = imports.services.http;
 
@@ -17,13 +22,114 @@ const RETRY_INTERVAL_MS = 500;
 
 let _backendProcess = null;
 let _starting = false;
+let _installing = false;
+
+function _getExtDir() {
+    return Self.dir.get_path();
+}
 
 function _getVenvPython() {
-    return Self.dir.get_path() + '/venv/bin/python';
+    return _getExtDir() + '/venv/bin/python';
 }
 
 function _getBackendRunPy() {
-    return Self.dir.get_path() + '/backend/run.py';
+    return _getExtDir() + '/backend/run.py';
+}
+
+function _getRequirementsTxt() {
+    return _getExtDir() + '/requirements.txt';
+}
+
+function _notify(title, body) {
+    try {
+        Main.notify(title, body);
+    } catch (e) {
+        log('[LocalShare Backend] Notify error: ' + e);
+    }
+}
+
+function _runSubprocess(args) {
+    return new Promise(resolve => {
+        try {
+            let proc = Gio.Subprocess.new(
+                args,
+                Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE
+            );
+            proc.wait_async(null, (proc_, result) => {
+                try {
+                    let ok = proc_.wait_finish(result);
+                    resolve(ok);
+                } catch (e) {
+                    resolve(false);
+                }
+            });
+        } catch (e) {
+            resolve(false);
+        }
+    });
+}
+
+async function _findPython() {
+    let candidates = ['python3', 'python3.13', 'python3.12'];
+    for (let candidate of candidates) {
+        let ok = await _runSubprocess([candidate, '--version']);
+        if (ok) {
+            log('[LocalShare Backend] Found python: ' + candidate);
+            return candidate;
+        }
+    }
+    return null;
+}
+
+async function _ensureVenv() {
+    let venvPython = _getVenvPython();
+
+    try {
+        let venvFile = Gio.File.new_for_path(venvPython);
+        if (venvFile.query_exists(null)) {
+            log('[LocalShare Backend] Venv python found');
+            return true;
+        }
+    } catch (e) {
+        log('[LocalShare Backend] Venv check error: ' + e);
+    }
+
+    if (_installing) return false;
+    _installing = true;
+
+    _notify('LocalShare', 'Setting up Python environment...');
+
+    let extDir = _getExtDir();
+    let pythonBin = await _findPython();
+
+    if (!pythonBin) {
+        _notify('LocalShare', 'Python 3.12+ not found. Install it and try again.');
+        _installing = false;
+        return false;
+    }
+
+    log('[LocalShare Backend] Creating venv...');
+    let ok = await _runSubprocess([pythonBin, '-m', 'venv', extDir + '/venv']);
+    if (!ok) {
+        log('[LocalShare Backend] Venv creation failed');
+        _notify('LocalShare', 'Failed to create Python environment.');
+        _installing = false;
+        return false;
+    }
+
+    log('[LocalShare Backend] Installing requirements...');
+    ok = await _runSubprocess([venvPython, '-m', 'pip', 'install', '-r', _getRequirementsTxt()]);
+    if (!ok) {
+        log('[LocalShare Backend] Pip install failed');
+        _notify('LocalShare', 'Failed to install Python packages. Check your internet connection.');
+        _installing = false;
+        return false;
+    }
+
+    log('[LocalShare Backend] Venv setup complete');
+    _notify('LocalShare', 'Python environment ready');
+    _installing = false;
+    return true;
 }
 
 function _isProcessRunning() {
@@ -105,6 +211,12 @@ var ensureBackend = async function () {
     if (await _checkServer()) {
         log('[LocalShare Backend] Already running');
         return true;
+    }
+
+    let venvOk = await _ensureVenv();
+    if (!venvOk) {
+        log('[LocalShare Backend] Venv setup failed');
+        return false;
     }
 
     _starting = true;
