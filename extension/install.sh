@@ -76,6 +76,14 @@ install() {
 
     echo "==> Backend files deployed"
 
+    # ── Deploy shared constants ────────────────────────────────────
+    echo "==> Deploying shared constants"
+    mkdir -p "$EXT_TARGET/shared"
+    rsync -a --delete \
+        --exclude='__pycache__/' \
+        --exclude='*.pyc' \
+        "$SERVER_DIR/../shared/" "$EXT_TARGET/shared/"
+
     # ── Create venv ───────────────────────────────────────────────
     local VENV_DIR="$EXT_TARGET/venv"
     local REQUIREMENTS="$EXT_TARGET/requirements.txt"

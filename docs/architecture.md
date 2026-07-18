@@ -100,7 +100,6 @@ ServerManager ──publish──► EventBus ───subscriber──► Brows
 | GET | `/internal/pending` | List pending clients |
 | GET | `/internal/clients` | List connected clients |
 | GET | `/internal/ips` | Local IP addresses |
-| GET | `/internal/qrcode` | QR code PNG (base64) + URL |
 
 ### Browser API
 
@@ -141,7 +140,7 @@ ServerManager ──publish──► EventBus ───subscriber──► Brows
 
 ## Storage
 
-JSON files in `server/data/`:
+JSON files in `server/backend/data/`:
 
 | File | Model | Purpose |
 |------|-------|---------|

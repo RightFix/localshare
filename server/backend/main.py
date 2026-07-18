@@ -15,10 +15,13 @@ from pathlib import Path
 from fastapi import FastAPI
 
 # Make shared/constants.py importable from server/backend/
+# In production (via install.sh): shared/ is deployed to $EXT_TARGET/shared/
+# In development: shared/ is at the repo root (parent of server/)
 _SERVER_DIR = Path(__file__).resolve().parent.parent
 _REPO_ROOT = _SERVER_DIR.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+for path in (str(_SERVER_DIR), str(_REPO_ROOT)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 logging.basicConfig(
     level=logging.DEBUG,

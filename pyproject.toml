@@ -11,7 +11,6 @@ dependencies = [
     "aiofiles>=24.0.0",
     "python-multipart>=0.0.20",
     "websockets>=14.0",
-    "qrcode[pil]>=8.2",
     "shexli>=0.2.1",
     "tree-sitter>=0.25.0,<0.26",
 ]
