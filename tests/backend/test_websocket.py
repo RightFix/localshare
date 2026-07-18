@@ -1,12 +1,11 @@
 """Tests for WebSocket endpoints."""
 
 import pytest
-from starlette.testclient import TestClient
-
 from backend.main import app
 from backend.services.manager import ServerManager
 from backend.storage.manager import StorageManager
 from backend.websocket.events import event_bus
+from starlette.testclient import TestClient
 
 
 @pytest.fixture

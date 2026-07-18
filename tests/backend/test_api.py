@@ -1,13 +1,10 @@
 """Integration tests for API endpoints."""
 
-from pathlib import Path
-
 import pytest
-from httpx import ASGITransport, AsyncClient
-
 from backend.main import STATIC_DIR, app
 from backend.services.manager import ServerManager
 from backend.storage.manager import StorageManager
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture(autouse=True)
@@ -88,7 +85,7 @@ class TestInternalAPI:
         async with client as c:
             resp = await c.post(
                 "/internal/start",
-                json={"port": 8080, "internal_port": 8765, "ws_port": 8766},
+                json={"port": 8080, "internal_port": 8765},
             )
             assert resp.status_code == 200
             assert resp.json()["status"] == "success"
@@ -267,6 +264,6 @@ class TestFileOperations:
         symlink.symlink_to(outside_file)
 
         async with session_client as c:
-            resp = await c.get(f"/api/files/link_to_secret.txt")
+            resp = await c.get("/api/files/link_to_secret.txt")
             assert resp.status_code == 200
             assert resp.text == "outside content"

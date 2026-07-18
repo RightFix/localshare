@@ -94,7 +94,7 @@ class TestServerManager:
         config = await server_manager.storage.get_config()
         assert config.sharing_enabled is False
 
-        await server_manager.start(8080, 8765, 8766, Path("/tmp/up"), Path("/tmp/sh"))
+        await server_manager.start(8080, 8765, Path("/tmp/up"), Path("/tmp/sh"))
 
         config = await server_manager.storage.get_config()
         assert config.sharing_enabled is True
@@ -102,7 +102,7 @@ class TestServerManager:
 
     @pytest.mark.asyncio
     async def test_stop_disables_sharing(self, server_manager):
-        await server_manager.start(8080, 8765, 8766, Path("/tmp/up"), Path("/tmp/sh"))
+        await server_manager.start(8080, 8765, Path("/tmp/up"), Path("/tmp/sh"))
         await server_manager.stop()
 
         config = await server_manager.storage.get_config()
@@ -116,7 +116,7 @@ class TestServerManager:
             events.append(data)
 
         server_manager.set_ws_callback(capture)
-        await server_manager.start(8080, 8765, 8766, Path("/tmp/up"), Path("/tmp/sh"))
+        await server_manager.start(8080, 8765, Path("/tmp/up"), Path("/tmp/sh"))
         await server_manager.stop()
 
         assert len(events) == 1

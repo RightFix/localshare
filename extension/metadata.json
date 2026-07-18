@@ -2,7 +2,7 @@
     "uuid": "localshare@rightfix.com",
     "name": "Local Share",
     "description": "Transfer files between devices on your local network through a web browser",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "shell-version": ["48", "49", "50"],
     "url": "https://github.com/RightFix/LocalShare",
     "creator": "Righteousness",

@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from backend.models.activity import ActivityData
 from backend.models.client import Client, ClientsData
 from backend.models.config import Config, ServerStatus
@@ -15,7 +14,6 @@ class TestConfig:
         config = Config()
         assert config.port == 8080
         assert config.internal_port == 8765
-        assert config.ws_port == 8766
         assert config.sharing_enabled is False
         assert config.notify_on_upload is True
         assert config.notify_on_download is True
@@ -51,7 +49,6 @@ class TestServerStatus:
             running=True,
             port=8080,
             internal_port=8765,
-            ws_port=8766,
             upload_dir=Path("/tmp/upload"),
             shared_dir=Path("/tmp/share"),
             sharing_enabled=True,

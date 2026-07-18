@@ -13,6 +13,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from backend.websocket.events import event_bus
 from shared.constants import (
     ACTION_CLIENT_APPROVED,
     ACTION_CLIENT_REJECTED,
@@ -22,8 +23,6 @@ from shared.constants import (
     WS_ACTION_REJECTED,
     WS_BROWSER,
 )
-
-from backend.websocket.events import event_bus
 
 logger = logging.getLogger(__name__)
 

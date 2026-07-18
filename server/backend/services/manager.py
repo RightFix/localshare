@@ -56,7 +56,6 @@ class ServerManager:
         self,
         port: int,
         internal_port: int,
-        ws_port: int,
         upload_dir: Path,
         shared_dir: Path,
     ) -> bool:
@@ -68,7 +67,6 @@ class ServerManager:
         config = await self.storage.get_config()
         config.port = port
         config.internal_port = internal_port
-        config.ws_port = ws_port
         config.upload_dir = upload_dir
         config.shared_dir = shared_dir
         config.sharing_enabled = True
@@ -78,9 +76,7 @@ class ServerManager:
         upload_dir.mkdir(parents=True, exist_ok=True)
         shared_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(
-            f"Starting LocalShare server on port {port}, internal {internal_port}, ws {ws_port}"
-        )
+        logger.info(f"Starting LocalShare server on port {port}, internal {internal_port}")
         logger.info(f"Upload directory: {upload_dir}")
         logger.info(f"Shared directory: {shared_dir}")
 

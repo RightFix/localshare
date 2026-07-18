@@ -274,8 +274,6 @@ var LocalShareIndicator = GObject.registerClass(
                     this._knownPendingIds = [];
                 }
 
-                let Gtk = imports.gi.Gtk;
-
                 let files = await new Promise(resolve => {
                     let chooser = new Gtk.FileChooserNative({
                         title: 'Select files to send',
@@ -321,7 +319,6 @@ var LocalShareIndicator = GObject.registerClass(
                 await httpPost(INTERNAL_API + '/internal/start', {
                     port: 8080,
                     internal_port: 8765,
-                    ws_port: 8766,
                     shared_dir: sendDir
                 });
 
@@ -377,8 +374,7 @@ var LocalShareIndicator = GObject.registerClass(
 
                 await httpPost(INTERNAL_API + '/internal/start', {
                     port: 8080,
-                    internal_port: 8765,
-                    ws_port: 8766
+                    internal_port: 8765
                 });
 
                 let status = await httpGet(INTERNAL_API + '/internal/status');

@@ -16,9 +16,8 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from shared.constants import WS_EXTENSION
-
 from backend.websocket.events import event_bus
+from shared.constants import WS_EXTENSION
 
 logger = logging.getLogger(__name__)
 

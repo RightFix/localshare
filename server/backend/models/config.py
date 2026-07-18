@@ -29,12 +29,6 @@ class Config(BaseModel):
         le=65535,
         description="Internal API port for extension communication",
     )
-    ws_port: int = Field(
-        default=8766,
-        ge=1024,
-        le=65535,
-        description="WebSocket port for real-time events",
-    )
     sharing_enabled: bool = Field(
         default=False,
         description="Whether sharing is currently active",
@@ -79,7 +73,6 @@ class ServerStatus(BaseModel):
     running: bool = Field(description="Whether the server is running")
     port: int | None = Field(default=None, description="Main server port")
     internal_port: int | None = Field(default=None, description="Internal API port")
-    ws_port: int | None = Field(default=None, description="WebSocket port")
     upload_dir: Path | None = Field(default=None, description="Upload directory")
     shared_dir: Path | None = Field(default=None, description="Shared directory")
     sharing_enabled: bool = Field(default=False, description="Whether sharing is active")

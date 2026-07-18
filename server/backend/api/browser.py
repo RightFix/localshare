@@ -101,6 +101,6 @@ async def api_clients(request: Request) -> dict:
             {**c.model_dump(), "session_id": s.id}
             for c in clients.connected
             for s in sessions.sessions
-            if s.ip == c.ip
+            if s.client_id == c.id
         ]
     }

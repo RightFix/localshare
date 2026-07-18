@@ -64,7 +64,6 @@ class StorageManager:
             running=config.sharing_enabled,
             port=config.port if config.sharing_enabled else None,
             internal_port=config.internal_port if config.sharing_enabled else None,
-            ws_port=config.ws_port if config.sharing_enabled else None,
             upload_dir=config.upload_dir if config.sharing_enabled else None,
             shared_dir=config.shared_dir if config.sharing_enabled else None,
             sharing_enabled=config.sharing_enabled,
