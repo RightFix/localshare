@@ -6,9 +6,10 @@ const { Gio, GLib, GObject, St, Soup, PanelMenu, PopupMenu } = imports.gi;
 const Main = imports.ui.main;
 
 const Self = imports.misc.extensionUtils.getCurrentExtension();
+Self.imports = imports;
 imports.searchPath.unshift(Self.dir.get_path());
-const { getSession, httpGet, httpPost, httpPut } = imports.services.http;
-const { ensureBackend, stopBackend } = imports.services.backend;
+const { getSession, httpGet, httpPost, httpPut } = Self.imports.services.http;
+const { ensureBackend, stopBackend } = Self.imports.services.backend;
 
 const INTERNAL_API = 'http://127.0.0.1:8765';
 const WS_URL = 'ws://127.0.0.1:8765/internal/ws/events';

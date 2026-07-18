@@ -8,8 +8,9 @@ imports.gi.versions.Adw = '1';
 const { Gio, GLib, Soup, Gtk, Adw } = imports.gi;
 
 const Self = imports.misc.extensionUtils.getCurrentExtension();
+Self.imports = imports;
 imports.searchPath.unshift(Self.dir.get_path());
-const { httpGet, httpPost, httpPut } = imports.services.http;
+const { httpGet, httpPost, httpPut } = Self.imports.services.http;
 
 const INTERNAL_API = 'http://127.0.0.1:8765';
 

@@ -14,9 +14,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-# Make shared/constants.py importable from extension/backend/
-_EXTENSION_DIR = Path(__file__).resolve().parent.parent
-_REPO_ROOT = _EXTENSION_DIR.parent
+# Make shared/constants.py importable from server/backend/
+_SERVER_DIR = Path(__file__).resolve().parent.parent
+_REPO_ROOT = _SERVER_DIR.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
@@ -28,8 +28,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("LOCALSHARE_DATA_DIR", Path(__file__).parent / "data"))
-STATIC_DIR = Path(__file__).parent / "static"
+DATA_DIR = Path(os.environ.get("LOCALSHARE_DATA_DIR", _SERVER_DIR / "data"))
+STATIC_DIR = _SERVER_DIR / "static"
 
 MAIN_PORT = int(os.environ.get("LOCALSHARE_PORT", "8080"))
 INTERNAL_PORT = int(os.environ.get("LOCALSHARE_INTERNAL_PORT", "8765"))

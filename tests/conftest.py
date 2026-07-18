@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "extension"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "server"))
 sys.path.insert(0, str(Path(__file__).parent.parent))  # for shared/constants.py
 
 

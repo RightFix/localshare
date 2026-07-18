@@ -63,6 +63,19 @@ install() {
 
     echo "==> Extension files deployed"
 
+    # ── Deploy server (Python backend + web UI) ────────────────────
+    local SERVER_DIR="$(dirname "$SCRIPT_DIR")/server"
+    echo "==> Deploying Python backend"
+    mkdir -p "$EXT_TARGET/backend"
+    rsync -a --delete \
+        --exclude='__pycache__/' \
+        --exclude='*.pyc' \
+        --exclude='data/' \
+        "$SERVER_DIR/backend/" "$EXT_TARGET/backend/"
+    rsync -a "$SERVER_DIR/requirements.txt" "$EXT_TARGET/requirements.txt"
+
+    echo "==> Backend files deployed"
+
     # ── Create venv ───────────────────────────────────────────────
     local VENV_DIR="$EXT_TARGET/venv"
     local REQUIREMENTS="$EXT_TARGET/requirements.txt"

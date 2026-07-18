@@ -82,36 +82,39 @@ uv run pytest
 uv run ruff check
 
 # Start backend directly (without extension)
-uv run python extension/backend/run.py
+uv run python server/backend/run.py
 ```
 
 ### Project structure
 
 ```
-├── extension/             # Self-contained GNOME Shell extension + backend
-│   ├── backend/           # Python FastAPI backend
-│   │   ├── main.py        # App factory, lifespan, router includes
+├── extension/             # GNOME Shell extension only
+│   ├── extension.js       # Entry point
+│   ├── prefs.js           # Preferences dialog
+│   ├── src/main.js        # Panel indicator and menu
+│   ├── services/
+│   │   ├── http.js        # Shared HTTP helpers
+│   │   └── backend.js     # Backend process lifecycle manager
+│   ├── schemas/           # GSettings schema
+│   ├── metadata.json      # Extension metadata
+│   ├── stylesheet.css     # Extension styles
+│   ├── install.sh         # Production install script
+│   └── setup.sh           # Development setup script
+├── server/                # Python backend (separate from extension)
+│   ├── backend/
+│   │   ├── main.py        # FastAPI app factory
 │   │   ├── run.py         # Internal API entry point
 │   │   ├── api/           # Route handlers (browser, files, internal)
 │   │   ├── auth/          # Session tokens, CSRF protection
 │   │   ├── models/        # Pydantic data models
 │   │   ├── storage/       # Atomic JSON file storage
 │   │   ├── services/      # Business logic (server management, network)
-│   │   ├── websocket/     # EventBus pub/sub, WS handlers
-│   │   └── static/        # Web UI (index.html, CSS, JS)
-│   ├── src/main.js        # Panel indicator and menu
-│   ├── prefs.js           # Extensions app preferences dialog
-│   ├── services/
-│   │   ├── http.js        # Shared HTTP helpers
-│   │   └── backend.js     # Backend process lifecycle manager
-│   ├── schemas/           # GSettings schema
-│   ├── metadata.json      # Extension metadata
-│   ├── setup.sh           # Development setup script
-│   ├── install.sh         # Production install script
+│   │   └── websocket/     # EventBus pub/sub, WS handlers
+│   ├── static/            # Web UI (index.html, CSS, JS)
 │   └── requirements.txt   # pip dependencies
+├── shared/constants.py    # Shared constants
 ├── tests/                 # Test suite (73 tests)
 ├── docs/                  # Architecture documentation
-├── shared/                # Shared constants
 └── pyproject.toml         # Project config + uv dependencies
 ```
 
@@ -119,7 +122,7 @@ uv run python extension/backend/run.py
 
 ```bash
 # Package the extension (zip contents at root, filename = UUID)
-cd extension && zip -r ../localshare@rightfix.com.zip . -x 'install.sh' && cd ..
+cd extension && zip -r ../localshare@rightfix.com.zip . -x install.sh setup.sh && cd ..
 ```
 
 Then upload `localshare@rightfix.com.zip` at https://extensions.gnome.org/upload/

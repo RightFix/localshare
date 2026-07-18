@@ -13,6 +13,7 @@ upload/
 
 # Runtime data
 backend/data/
+server/data/
 
 # OS files
 .DS_Store

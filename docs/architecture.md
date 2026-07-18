@@ -141,7 +141,7 @@ ServerManager ──publish──► EventBus ───subscriber──► Brows
 
 ## Storage
 
-JSON files in `extension/backend/data/`:
+JSON files in `server/data/`:
 
 | File | Model | Purpose |
 |------|-------|---------|
@@ -158,8 +158,21 @@ All access goes through `StorageManager` → `JSONStore` (atomic async).
 
 ```
 local-share/
-├── extension/
-│   ├── backend/                   # Python FastAPI backend
+├── extension/                     # GNOME Shell extension only
+│   ├── extension.js               # Entry point
+│   ├── prefs.js                   # Preferences dialog
+│   ├── src/
+│   │   └── main.js                # Panel indicator and menu
+│   ├── services/
+│   │   ├── http.js                # Shared HTTP helpers
+│   │   └── backend.js             # Backend subprocess lifecycle
+│   ├── schemas/                   # GSettings schema
+│   ├── metadata.json              # Extension metadata
+│   ├── stylesheet.css             # Extension styles
+│   ├── install.sh                 # Production install script
+│   └── setup.sh                   # Development setup script
+├── server/                        # Python backend (separate from extension)
+│   ├── backend/
 │   │   ├── __init__.py
 │   │   ├── main.py                # App factory, lifespan, router includes
 │   │   ├── run.py                 # Internal API entry point
@@ -186,33 +199,22 @@ local-share/
 │   │   │   ├── __init__.py
 │   │   │   ├── network.py         # IP detection
 │   │   │   └── manager.py         # ServerManager (lifecycle, client approval)
-│   │   ├── websocket/
-│   │   │   ├── __init__.py
-│   │   │   ├── events.py          # EventBus pub/sub
-│   │   │   ├── client.py          # Browser WS handler
-│   │   │   └── extension.py       # Extension WS handler
-│   │   ├── static/
-│   │   │   ├── index.html         # Web UI
-│   │   │   ├── style.css          # Styles
-│   │   │   └── app.js             # Frontend logic
-│   │   └── data/                  # Runtime JSON storage
-│   ├── src/
-│   │   └── main.js                # Extension panel menu + logic
-│   ├── services/
-│   │   ├── http.js                # Shared HTTP helpers
-│   │   └── backend.js             # Backend subprocess lifecycle
-│   ├── schemas/                   # GSettings schema
-│   ├── prefs.js                   # Extensions app preferences
-│   ├── metadata.json              # Extension metadata
-│   ├── stylesheet.css             # Extension styles
-│   ├── requirements.txt           # pip dependencies (fastapi, uvicorn, etc.)
-│   ├── setup.sh                   # Development setup/run
-│   └── install.sh                 # Production installation
+│   │   └── websocket/
+│   │       ├── __init__.py
+│   │       ├── events.py          # EventBus pub/sub
+│   │       ├── client.py          # Browser WS handler
+│   │       └── extension.py       # Extension WS handler
+│   ├── static/                    # Web UI (browser-facing)
+│   │   ├── index.html
+│   │   ├── style.css
+│   │   └── app.js
+│   ├── data/                      # Runtime JSON storage
+│   └── requirements.txt           # pip dependencies (fastapi, uvicorn, etc.)
 ├── shared/
 │   └── constants.py               # Event/route constants (source of truth)
 ├── tests/
 │   ├── conftest.py                # Shared test fixtures
-│   └── backend/                   # 71 pytest tests
+│   └── backend/                   # 73 pytest tests
 ├── docs/
 │   └── architecture.md            # This file
 ├── pyproject.toml                 # Project metadata / build config
