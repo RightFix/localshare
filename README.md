@@ -82,13 +82,13 @@ uv run pytest
 uv run ruff check
 
 # Start backend directly (without extension)
-uv run python server/backend/run.py
+uv run python extension/backend/run.py
 ```
 
 ### Project structure
 
 ```
-├── extension/             # GNOME Shell extension only
+├── extension/             # GNOME Shell extension (self-contained)
 │   ├── extension.js       # Entry point
 │   ├── prefs.js           # Preferences dialog
 │   ├── src/main.js        # Panel indicator and menu
@@ -99,9 +99,8 @@ uv run python server/backend/run.py
 │   ├── metadata.json      # Extension metadata
 │   ├── stylesheet.css     # Extension styles
 │   ├── install.sh         # Production install script
-│   └── setup.sh           # Development setup script
-├── server/                # Python backend (separate from extension)
-│   ├── backend/
+│   ├── setup.sh           # Development setup script
+│   ├── backend/           # Python FastAPI backend
 │   │   ├── main.py        # FastAPI app factory
 │   │   ├── run.py         # Internal API entry point
 │   │   ├── api/           # Route handlers (browser, files, internal)
@@ -109,13 +108,11 @@ uv run python server/backend/run.py
 │   │   ├── models/        # Pydantic data models
 │   │   ├── storage/       # Atomic JSON file storage
 │   │   ├── services/      # Business logic (server management, network)
-│   │   └── websocket/     # EventBus pub/sub, WS handlers
-│   ├── static/            # Web UI (index.html, CSS, JS)
-│   └── requirements.txt   # pip dependencies
-├── shared/constants.py    # Shared constants
-├── tests/                 # Test suite (73 tests)
-├── docs/                  # Architecture documentation
-└── pyproject.toml         # Project config + uv dependencies
+│   │   ├── websocket/     # EventBus pub/sub, WS handlers
+│   │   ├── static/        # Web UI (index.html, CSS, JS)
+│   │   └── requirements.txt  # pip dependencies
+│   ├── shared/constants.py  # Shared constants
+├── pyproject.toml         # Project config + uv dependencies
 ```
 
 ## Publishing to GNOME Extensions

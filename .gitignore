@@ -12,8 +12,14 @@ extension/venv/
 upload/
 
 # Runtime data
-backend/data/
-server/data/
+extension/backend/data/
+extension/data/
+extension/schemas/gschemas.compiled
+
+# Project-local files
+BACKEND_BUGS.txt
+uv.lock
+pyproject.toml
 
 # OS files
 .DS_Store
