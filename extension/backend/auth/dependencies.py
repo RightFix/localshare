@@ -1,13 +1,7 @@
-"""FastAPI dependency injection for session authentication and CSRF.
-
-Provides reusable Depends() callables that route handlers can use
-to require an authenticated session with CSRF protection.
-"""
-
 from fastapi import Depends, HTTPException, Request
 
-from backend.auth.session import get_session_id
-from backend.storage.manager import StorageManager
+from .session import get_session_id
+from storage.manager import StorageManager
 
 
 def get_storage(request: Request) -> StorageManager:
@@ -24,13 +18,18 @@ async def require_session(
     if not session_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    sessions_data = await storage.get_sessions()
-    session = sessions_data.get(session_id)
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid session")
+    found: dict = {}
 
-    session.update_activity()
-    await storage.sessions.save(sessions_data.model_dump())
+    def _touch(sessions) -> None:
+        session = sessions.get(session_id)
+        if session:
+            session.update_activity()
+            found["id"] = session_id
+
+    await storage.update_sessions(_touch)
+
+    if not found.get("id"):
+        raise HTTPException(status_code=401, detail="Invalid session")
     return session_id
 
 

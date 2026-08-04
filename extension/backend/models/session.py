@@ -27,7 +27,7 @@ class Session(BaseModel):
 
     def update_activity(self) -> None:
         """Update the last active timestamp."""
-        self.last_active = datetime.now()
+        self.last_active = datetime.now()  # noqa: DTZ005
 
     model_config = {"frozen": False}
 

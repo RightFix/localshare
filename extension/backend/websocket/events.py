@@ -1,10 +1,3 @@
-"""Event bus for push notifications from backend to WebSocket clients.
-
-Provides a publish/subscribe mechanism so that server-side events
-(client connected, file uploaded, etc.) can be pushed to the extension
-and browser clients in real time.
-"""
-
 import asyncio
 import logging
 from collections.abc import Callable, Coroutine

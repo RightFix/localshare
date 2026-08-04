@@ -1,14 +1,11 @@
-"""Internal API routes for the GNOME Shell extension.
-
-These routes are used exclusively by the extension running on the
-local machine (127.0.0.1:8765) for lifecycle management, configuration,
-and client approval.
-"""
-
 import logging
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+
+from models.config import Config
+from services.network import get_all_local_ips
 
 logger = logging.getLogger(__name__)
 
@@ -31,25 +28,37 @@ async def internal_config(request: Request) -> dict:
     return config.model_dump()
 
 
-@router.put("/config")
-async def internal_update_config(config: dict, request: Request) -> dict:
-    """Update configuration values."""
+@router.put("/config", response_model=None)
+async def internal_update_config(config: dict, request: Request) -> dict | JSONResponse:
+    """Update configuration values, validated against the Config model."""
     storage = request.app.state.storage_manager
     current = await storage.get_config()
-    for key, value in config.items():
-        if hasattr(current, key):
-            setattr(current, key, value)
-    await storage.save_config(current)
+    merged = current.model_dump()
+    merged.update(config)
+    try:
+        updated = Config(**merged)
+    except ValidationError as e:
+        logger.warning(f"Rejected invalid config update: {e.errors()}")
+        return JSONResponse(
+            {"status": "error", "message": "Invalid config", "detail": e.errors()},
+            status_code=400,
+        )
+    await storage.save_config(updated)
     return {"status": "success"}
 
 
-@router.post("/start")
-async def internal_start(config: dict, request: Request) -> dict:
+@router.post("/start", response_model=None)
+async def internal_start(config: dict, request: Request) -> dict | JSONResponse:
     """Start sharing."""
-    from backend.models.config import Config
-
     server_manager = request.app.state.server_manager
-    cfg = Config(**config)
+    try:
+        cfg = Config(**config)
+    except ValidationError as e:
+        logger.warning(f"Rejected invalid start config: {e.errors()}")
+        return JSONResponse(
+            {"status": "error", "message": "Invalid config", "detail": e.errors()},
+            status_code=400,
+        )
     success = await server_manager.start(
         port=cfg.port,
         internal_port=cfg.internal_port,
@@ -115,6 +124,4 @@ async def internal_clients(request: Request) -> dict:
 @router.get("/ips")
 async def internal_ips() -> dict:
     """Get all local IP addresses."""
-    from backend.services.network import get_all_local_ips
-
     return {"ips": get_all_local_ips()}

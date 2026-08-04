@@ -1,1 +1,1 @@
-"""Authentication module for LocalShare."""
+

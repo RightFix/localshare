@@ -13,8 +13,8 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.websocket.events import event_bus
-from shared.constants import (
+from .events import event_bus
+from constants import (
     ACTION_CLIENT_APPROVED,
     ACTION_CLIENT_REJECTED,
     EVENT_CLIENT,
@@ -34,13 +34,16 @@ async def websocket_client(websocket: WebSocket) -> None:
     """WebSocket endpoint for browser client approval handshake."""
     await websocket.accept()
 
+    server_manager = websocket.app.state.server_manager
+    client_id: str | None = None
+    session_id: str | None = None
+
     try:
         data = await websocket.receive_json()
         device = data.get("device", "Unknown Device")
         ip = data.get("ip", websocket.client.host if websocket.client else "Unknown")
         user_agent = data.get("user_agent", "")
 
-        server_manager = websocket.app.state.server_manager
         client_id = await server_manager.add_pending_client(device, ip, user_agent)
 
         await websocket.send_json(
@@ -52,14 +55,16 @@ async def websocket_client(websocket: WebSocket) -> None:
         )
 
         async def handle_event(event: str, event_data: dict) -> None:
+            nonlocal session_id
             if event_data.get("client_id") != client_id:
                 return
             try:
                 if event == EVENT_CLIENT and event_data.get("action") == ACTION_CLIENT_APPROVED:
+                    session_id = event_data.get("session_id", "")
                     await websocket.send_json(
                         {
                             "action": WS_ACTION_APPROVED,
-                            "token": event_data.get("session_id", ""),
+                            "token": session_id,
                         }
                     )
                 elif event == EVENT_CLIENT and event_data.get("action") == ACTION_CLIENT_REJECTED:
@@ -86,3 +91,13 @@ async def websocket_client(websocket: WebSocket) -> None:
             await websocket.close()
         except Exception:
             pass
+
+        if session_id:
+            await server_manager.disconnect_client(session_id)
+        elif client_id:
+            sessions_data = await server_manager.storage.get_sessions()
+            for session in sessions_data.sessions:
+                if session.client_id == client_id:
+                    await server_manager.disconnect_client(session.id)
+                    break
+            await server_manager.remove_pending_client(client_id)

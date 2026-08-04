@@ -1,27 +1,19 @@
-"""FastAPI application factory for LocalShare.
-
-Creates a FastAPI application with:
-- Lifespan-managed StorageManager and ServerManager (stored in app.state)
-- All API routers (browser, internal, files, websocket)
-- Static directory serving for the web UI
-"""
-
 import logging
 import os
 import sys
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 
-# Make shared/constants.py importable from server/backend/
-# In production (via install.sh): shared/ is deployed to $EXT_TARGET/shared/
-# In development: shared/ is at the repo root (parent of server/)
+from constants import EVENT_CLIENT, EVENT_FILE
+from services.manager import ServerManager
+from storage.manager import StorageManager
+from websocket.events import event_bus
+
+
 _SERVER_DIR = Path(__file__).resolve().parent.parent
-_REPO_ROOT = _SERVER_DIR.parent
-for path in (str(_SERVER_DIR), str(_REPO_ROOT)):
-    if path not in sys.path:
-        sys.path.insert(0, path)
+if str(_SERVER_DIR) not in sys.path:
+    sys.path.insert(0, str(_SERVER_DIR))
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -32,59 +24,53 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(os.environ.get("LOCALSHARE_DATA_DIR", _SERVER_DIR / "data"))
-STATIC_DIR = _SERVER_DIR / "static"
-
-MAIN_PORT = int(os.environ.get("LOCALSHARE_PORT", "8080"))
-INTERNAL_PORT = int(os.environ.get("LOCALSHARE_INTERNAL_PORT", "8765"))
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Initialize and clean up backend services."""
-    from backend.services.manager import ServerManager
-    from backend.storage.manager import StorageManager
-    from backend.websocket.events import event_bus
-    from shared.constants import EVENT_CLIENT, EVENT_FILE
-
-    logger.info("Starting LocalShare backend")
-
-    app.state.storage_manager = StorageManager(DATA_DIR)
-    app.state.server_manager = ServerManager(app.state.storage_manager)
-    app.state.static_dir = STATIC_DIR
-
-    bus = event_bus
-    app.state.server_manager.set_ws_callback(lambda data: bus.publish(EVENT_CLIENT, data))
-    app.state.server_manager.set_upload_callback(lambda data: bus.publish(EVENT_FILE, data))
-    app.state.server_manager.set_download_callback(lambda data: bus.publish(EVENT_FILE, data))
-
-    logger.info("LocalShare backend ready")
-    yield
-    logger.info("Shutting down LocalShare backend")
+# Shared singletons used by BOTH the loopback internal server and the
+# LAN-facing browser server. Sharing a single StorageManager/ServerManager
+# and a single EventBus across the two ASGI apps is what makes the
+# browser<->extension approval handshake and event notifications work.
+storage_manager = StorageManager(DATA_DIR)
 
 
-def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
-    app = FastAPI(title="LocalShare", lifespan=lifespan)
+def _configure_callbacks() -> None:
+    """Route server-manager events onto the shared EventBus."""
+    server_manager.set_ws_callback(lambda data: event_bus.publish(EVENT_CLIENT, data))
+    server_manager.set_upload_callback(lambda data: event_bus.publish(EVENT_FILE, data))
+    server_manager.set_download_callback(lambda data: event_bus.publish(EVENT_FILE, data))
 
-    from backend.api.browser import router as browser_router
-    from backend.api.files import router as files_router
-    from backend.api.internal import router as internal_router
-    from backend.websocket.client import router as browser_ws_router
-    from backend.websocket.extension import router as extension_ws_router
 
-    app.include_router(browser_router)
-    app.include_router(files_router)
+def create_internal_app() -> FastAPI:
+    """App served only on 127.0.0.1 for the GNOME extension."""
+    app = FastAPI(title="LocalShare Internal")
+    app.state.storage_manager = storage_manager
+    app.state.server_manager = server_manager
+
+    from api.internal import router as internal_router
+    from websocket.extension import router as extension_ws_router
+
     app.include_router(internal_router)
-    app.include_router(browser_ws_router)
     app.include_router(extension_ws_router)
-
     return app
 
 
-app = create_app()
+def create_browser_app() -> FastAPI:
+    """App served on 0.0.0.0 for browsers on the local network."""
+    app = FastAPI(title="LocalShare")
+    app.state.storage_manager = storage_manager
+    app.state.server_manager = server_manager
+    app.state.static_dir = STATIC_DIR
+
+    from api.browser import router as browser_router
+    from api.files import router as files_router
+    from websocket.client import router as browser_ws_router
+
+    app.include_router(browser_router)
+    app.include_router(files_router)
+    app.include_router(browser_ws_router)
+    return app
 
 
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="127.0.0.1", port=8765)
+server_manager = ServerManager(storage_manager, create_browser_app)
+_configure_callbacks()

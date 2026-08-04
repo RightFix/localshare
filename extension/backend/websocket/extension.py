@@ -1,23 +1,9 @@
-"""WebSocket endpoint for GNOME Shell extension push events.
-
-The extension connects here to receive real-time updates instead of
-polling HTTP endpoints every 3 seconds.
-
-Events pushed:
-- client_connected: new pending client
-- client_approved: client was approved, session created
-- client_rejected: client was rejected
-- client_disconnected: session ended
-- upload_completed: file upload finished
-- download_completed: file download finished
-"""
-
 import logging
 
+from constants import WS_EXTENSION
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.websocket.events import event_bus
-from shared.constants import WS_EXTENSION
+from .events import event_bus
 
 logger = logging.getLogger(__name__)
 

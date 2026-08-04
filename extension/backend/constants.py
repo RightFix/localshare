@@ -1,9 +1,3 @@
-"""Shared constants for LocalShare.
-
-Single source of truth for event types, API routes, and configuration
-defaults shared between the backend and extension.
-"""
-
 # ── Event types ────────────────────────────────────────────────────
 # Published via EventBus, consumed by extension and browser WebSockets.
 EVENT_CLIENT = "client"
@@ -40,10 +34,6 @@ INTERNAL_IPS = "/internal/ips"
 
 # ── Browser API routes (0.0.0.0:8080) ────────────────────────────
 BROWSER_STATUS = "/api/status"
-BROWSER_APPROVE = "/api/approve/{client_id}"
-BROWSER_REJECT = "/api/reject/{client_id}"
-BROWSER_PENDING = "/api/pending"
-BROWSER_CLIENTS = "/api/clients"
 BROWSER_UPLOAD = "/api/upload"
 BROWSER_FILES = "/api/files"
 BROWSER_FILE_DOWNLOAD = "/api/files/{filepath:path}"

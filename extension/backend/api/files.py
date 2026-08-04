@@ -6,12 +6,28 @@ All routes require a valid browser session (via cookie or header).
 import logging
 from pathlib import Path
 
+import aiofiles
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse
+
+from auth.dependencies import verify_csrf
+from auth.session import validate_session
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_CHUNK_SIZE = 1024 * 1024
+
+
+async def _stream_to_disk(file, path: Path) -> int:
+    """Stream a file upload to disk in bounded chunks. Returns bytes written."""
+    total = 0
+    async with aiofiles.open(path, "wb") as f:
+        while chunk := await file.read(_CHUNK_SIZE):
+            total += len(chunk)
+            await f.write(chunk)
+    return total
 
 
 @router.post("/api/upload")
@@ -19,9 +35,6 @@ async def api_upload(
     request: Request,
 ) -> JSONResponse:
     """Handle file uploads from an authenticated browser session."""
-    from backend.auth.dependencies import verify_csrf
-    from backend.auth.session import validate_session
-
     storage = request.app.state.storage_manager
     server_manager = request.app.state.server_manager
 
@@ -69,11 +82,10 @@ async def api_upload(
                 upload_path = config.upload_dir / safe_name
                 counter += 1
 
-        content = await file.read()
-        upload_path.write_bytes(content)
+        size = await _stream_to_disk(file, upload_path)
 
         await server_manager.notify_upload(
-            safe_name, len(content), session.device if session else "Unknown"
+            safe_name, size, session.device if session else "Unknown"
         )
         uploaded.append(safe_name)
 
@@ -88,19 +100,18 @@ async def api_list_files(
     """List files in the shared directory."""
     storage = request.app.state.storage_manager
 
-    from backend.auth.session import validate_session
-
     session_id = await validate_session(request, storage)
     if not session_id:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     config = await storage.get_config()
     shared_dir = config.shared_dir
+    shared_dir_resolved = shared_dir.resolve()
 
     target_dir = (shared_dir / path) if path else shared_dir
     resolved = target_dir.resolve()
 
-    if not target_dir.is_symlink() and not resolved.is_relative_to(shared_dir.resolve()):
+    if not resolved.is_relative_to(shared_dir_resolved):
         return JSONResponse({"error": "Invalid path"}, status_code=400)
 
     if not resolved.exists() or not resolved.is_dir():
@@ -140,8 +151,6 @@ async def api_download_file(
     """Download a file from the shared directory."""
     storage = request.app.state.storage_manager
 
-    from backend.auth.session import validate_session
-
     session_id = await validate_session(request, storage)
     if not session_id:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -154,10 +163,12 @@ async def api_download_file(
         return JSONResponse({"error": "Invalid path"}, status_code=400)
 
     file_path = shared_dir / safe_path
-    if not file_path.exists():
+    resolved = file_path.resolve()
+
+    if not resolved.is_relative_to(shared_dir.resolve()):
         return JSONResponse({"error": "File not found"}, status_code=404)
 
-    if not file_path.is_symlink() and not file_path.resolve().is_relative_to(shared_dir.resolve()):
+    if not file_path.exists():
         return JSONResponse({"error": "File not found"}, status_code=404)
 
     if not file_path.is_file():

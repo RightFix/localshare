@@ -1,19 +1,21 @@
 """Storage manager coordinating all JSON stores."""
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-from shared.constants import (
+from constants import (
     STORAGE_ACTIVITY,
     STORAGE_CLIENTS,
     STORAGE_CONFIG,
     STORAGE_SESSIONS,
 )
 
-from ..models.activity import ActivityData
-from ..models.client import ClientsData
-from ..models.config import Config, ServerStatus
-from ..models.session import SessionsData
+from models.activity import ActivityData
+from models.client import ClientsData
+from models.config import Config, ServerStatus
+from models.session import SessionsData
 from .json_store import JSONStore
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,45 @@ class StorageManager:
             connected_clients=len(clients.connected),
             pending_clients=len(clients.pending),
         )
+
+    async def update_clients(
+        self, mutator: Callable[[ClientsData], None]
+    ) -> ClientsData:
+        """Atomically load, mutate, and save the clients store.
+
+        The whole read-modify-write runs under the store lock so concurrent
+        writers cannot lose each other's changes.
+        """
+        def _update(raw: Any) -> Any:
+            clients = raw if isinstance(raw, ClientsData) else ClientsData(**(raw or {}))
+            mutator(clients)
+            return clients.model_dump()
+
+        saved = await self.clients.update(_update)
+        return ClientsData(**saved)
+    async def update_sessions(
+        self, mutator: Callable[[SessionsData], None]
+    ) -> SessionsData:
+        """Atomically load, mutate, and save the sessions store."""
+        def _update(raw: Any) -> Any:
+            sessions = raw if isinstance(raw, SessionsData) else SessionsData(**(raw or {}))
+            mutator(sessions)
+            return sessions.model_dump()
+
+        saved = await self.sessions.update(_update)
+        return SessionsData(**saved)
+
+    async def update_activity(
+        self, mutator: Callable[[ActivityData], None]
+    ) -> ActivityData:
+        """Atomically load, mutate, and save the activity store."""
+        def _update(raw: Any) -> Any:
+            activity = raw if isinstance(raw, ActivityData) else ActivityData(**(raw or {}))
+            mutator(activity)
+            return activity.model_dump()
+
+        saved = await self.activity.update(_update)
+        return ActivityData(**saved)
 
     async def clear_all_sessions(self) -> None:
         """Clear all approved sessions."""

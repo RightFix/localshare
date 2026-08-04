@@ -1,15 +1,9 @@
-"""Session token management for LocalShare.
-
-Provides helpers for creating, validating, and managing browser session tokens.
-Sessions are stored in the JSON storage layer and accessed via cookies or headers.
-"""
-
 import logging
 from uuid import uuid4
 
 from fastapi import Request, Response
 
-from backend.storage.manager import StorageManager
+from storage.manager import StorageManager
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +44,13 @@ async def validate_session(request: Request, storage: StorageManager) -> str | N
     if not session_id:
         return None
 
-    sessions_data = await storage.get_sessions()
-    session = sessions_data.get(session_id)
-    if not session:
-        return None
+    found: dict = {}
 
-    session.update_activity()
-    await storage.sessions.save(sessions_data.model_dump())
-    return session_id
+    def _touch(sessions) -> None:
+        session = sessions.get(session_id)
+        if session:
+            session.update_activity()
+            found["id"] = session_id
+
+    await storage.update_sessions(_touch)
+    return found.get("id")
