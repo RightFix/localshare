@@ -4,8 +4,8 @@
           path="/org/gnome/shell/extensions/localshare/">
     <key name="auto-start" type="b">
       <default>false</default>
-      <summary>Auto-start backend</summary>
-      <description>Start the LocalShare backend automatically when GNOME Shell starts.</description>
+      <summary>Auto-start sharing</summary>
+      <description>Start sharing automatically when GNOME Shell starts.</description>
     </key>
     <key name="notify-on-upload" type="b">
       <default>true</default>
@@ -16,6 +16,21 @@
       <default>true</default>
       <summary>Notify on file download</summary>
       <description>Show a notification when a file is downloaded.</description>
+    </key>
+    <key name="upload-dir" type="s">
+      <default>''</default>
+      <summary>Upload directory</summary>
+      <description>Directory where uploaded files are stored.</description>
+    </key>
+    <key name="shared-dir" type="s">
+      <default>''</default>
+      <summary>Shared directory</summary>
+      <description>Directory that visitors can browse and download.</description>
+    </key>
+    <key name="port" type="i">
+      <default>8080</default>
+      <summary>Browser port</summary>
+      <description>Port number for the browser web server.</description>
     </key>
     <key name="internal-port" type="i">
       <default>8765</default>

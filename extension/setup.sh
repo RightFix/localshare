@@ -1,18 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# LocalShare — Backend Setup & Run Script (Development Only)
-#
-# For production installation, use:  ./extension/install.sh
-#
-# Usage:
-#   ./extension/setup.sh          # Set up virtual environment and install deps
-#   ./extension/setup.sh run      # Start the backend using the venv
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVER_DIR="$(dirname "$SCRIPT_DIR")/server"
 VENV_DIR="$SCRIPT_DIR/venv"
-REQUIREMENTS="$SERVER_DIR/requirements.txt"
+REQUIREMENTS="$SCRIPT_DIR/backend/requirements.txt"
 
 # ── Detect Python 3.12+ ────────────────────────────────────────────
 find_python() {
@@ -65,7 +57,7 @@ setup() {
     "$VENV_DIR/bin/pip" install --quiet -r "$REQUIREMENTS"
     echo "    Done"
 
-    mkdir -p "$SERVER_DIR/backend/data"
+    mkdir -p "$SCRIPT_DIR/backend/data"
     echo ""
     echo "==> Setup complete."
     echo "    Run:  ./extension/setup.sh run"
@@ -80,7 +72,7 @@ run() {
     fi
 
     echo "==> Starting LocalShare backend..."
-    exec "$VENV_DIR/bin/python" "$SERVER_DIR/backend/run.py" "$@"
+    exec "$VENV_DIR/bin/python" "$SCRIPT_DIR/backend/run.py" "$@"
 }
 
 # ── Dispatch ───────────────────────────────────────────────────────

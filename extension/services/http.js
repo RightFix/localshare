@@ -1,16 +1,16 @@
-/* Shared HTTP helpers for LocalShare extension. */
-
 'use strict';
 
-const { GLib, Soup } = imports.gi;
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import Soup from 'gi://Soup';
 
 let _httpSession = null;
 
-var getSession = function () {
+export function getSession() {
     if (!_httpSession)
         _httpSession = new Soup.Session({ timeout: 5 });
     return _httpSession;
-};
+}
 
 function httpRequest(method, url, body) {
     return new Promise((resolve, reject) => {
@@ -25,9 +25,9 @@ function httpRequest(method, url, body) {
             msg.set_request_body_from_bytes('application/json', gbytes);
         }
 
-        session.send_async(msg, null, (session, result) => {
+        session.send_async(msg, null, (session_, result) => {
             try {
-                let bytes = session.send_finish(result);
+                let bytes = session_.send_finish(result);
                 if (msg.status_code !== 200) {
                     reject(new Error('HTTP ' + msg.status_code));
                     return;
@@ -41,14 +41,14 @@ function httpRequest(method, url, body) {
     });
 }
 
-var httpGet = function httpGet(url) {
+export function httpGet(url) {
     return httpRequest('GET', url);
-};
+}
 
-var httpPost = function httpPost(url, body) {
+export function httpPost(url, body) {
     return httpRequest('POST', url, body || {});
-};
+}
 
-var httpPut = function httpPut(url, body) {
+export function httpPut(url, body) {
     return httpRequest('PUT', url, body || {});
-};
+}

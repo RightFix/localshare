@@ -1,25 +1,34 @@
-/* LocalShare - GNOME Shell Extension */
-
 'use strict';
 
-const { Gio, GLib, GObject, St, Soup, PanelMenu, PopupMenu } = imports.gi;
-const Main = imports.ui.main;
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
+import St from 'gi://St';
+import Soup from 'gi://Soup';
+import Gtk from 'gi://Gtk?version=4.0';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import { PanelMenu } from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import { PopupMenu } from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import { getSession, httpGet, httpPost } from './services/http.js';
+import { init as initBackend, ensureBackend, stopBackend } from './services/backend.js';
 
-const Self = imports.misc.extensionUtils.getCurrentExtension();
-Self.imports = imports;
-imports.searchPath.unshift(Self.dir.get_path());
-const { getSession, httpGet, httpPost, httpPut } = Self.imports.services.http;
-const { ensureBackend, stopBackend } = Self.imports.services.backend;
-
-const INTERNAL_API = 'http://127.0.0.1:8765';
-const WS_URL = 'ws://127.0.0.1:8765/internal/ws/events';
-const POLL_INTERVAL = 3000;
 const WS_RECONNECT_DELAY = 3000;
+const POLL_INTERVAL = 3000;
 
+let _extension = null;
+let _settings = null;
 let indicator = null;
 let pollTimer = null;
 let wsConnection = null;
 let wsReconnectId = null;
+
+function _internalBase() {
+    return 'http://127.0.0.1:' + _settings.get_int('internal-port');
+}
+
+function _wsUrl() {
+    return 'ws://127.0.0.1:' + _settings.get_int('internal-port') + '/internal/ws/events';
+}
 
 function notify(title, body) {
     try {
@@ -29,16 +38,18 @@ function notify(title, body) {
     }
 }
 
-function init() {
-    log('[LocalShare] Init');
-}
-
-function enable() {
+export function enable(extension) {
     log('[LocalShare] Enable');
+    _extension = extension;
+    _settings = extension.getSettings();
+    initBackend(extension.dir.get_path(), _settings);
     indicator = new LocalShareIndicator();
+
+    if (_settings.get_boolean('auto-start'))
+        indicator._autoStart();
 }
 
-function disable() {
+export function disable() {
     log('[LocalShare] Disable');
     _stopPolling();
     _disconnectWS();
@@ -76,12 +87,12 @@ function _connectWS() {
 
     try {
         let session = getSession();
-        let uri = GLib.Uri.parse(WS_URL, GLib.UriFlags.NONE);
+        let uri = GLib.Uri.parse(_wsUrl(), GLib.UriFlags.NONE);
         let msg = new Soup.Message({ method: 'GET', uri: uri });
 
-        session.websocket_connect_async(msg, null, null, null, (session, result) => {
+        session.websocket_connect_async(msg, null, null, null, (session_, result) => {
             try {
-                wsConnection = session.websocket_connect_finish(result);
+                wsConnection = session_.websocket_connect_finish(result);
                 log('[LocalShare] WS connected');
 
                 wsConnection.connect('message', (conn, type, data) => {
@@ -137,6 +148,24 @@ function _disconnectWS() {
     }
 }
 
+function _deleteRecursively(file) {
+    let enumerator = file.enumerate_children(
+        'standard::*',
+        Gio.FileQueryInfoFlags.NONE,
+        null
+    );
+    let info;
+    while ((info = enumerator.next_file(null)) !== null) {
+        let child = enumerator.get_child(info);
+        if (info.get_file_type() === Gio.FileType.DIRECTORY)
+            _deleteRecursively(child);
+        else
+            child.delete(null);
+    }
+    enumerator.close(null);
+    file.delete(null);
+}
+
 var LocalShareIndicator = GObject.registerClass(
     class LocalShareIndicator extends PanelMenu.Button {
         _init() {
@@ -146,14 +175,16 @@ var LocalShareIndicator = GObject.registerClass(
             this._shareUrl = null;
             this._sendDir = null;
             this._knownPendingIds = [];
+            this._dynamicItems = [];
 
             let icon = new St.Icon({
                 icon_name: 'network-server-symbolic',
-                style_class: 'system-status-icon'
+                style_class: 'system-status-icon localshare-indicator'
             });
             this.add_child(icon);
 
             this._header = new PopupMenu.PopupMenuItem('LocalShare', { reactive: false });
+            this._header.label.add_style_class_name('localshare-header-label');
             this.menu.addMenuItem(this._header);
 
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -168,43 +199,49 @@ var LocalShareIndicator = GObject.registerClass(
             this.menu.addMenuItem(settingsItem);
         }
 
+        _addDynamicItem(item) {
+            this._dynamicSection.addMenuItem(item);
+            this._dynamicItems.push(item);
+        }
+
         _rebuildMenu() {
-            this._clearSection(this._dynamicSection);
+            this._clearSection();
+            this._dynamicItems = [];
 
             if (this._mode === 'sending') {
                 let stopItem = new PopupMenu.PopupMenuItem('Stop Sending');
                 stopItem.connect('activate', () => this._onStopSending());
-                this._dynamicSection.addMenuItem(stopItem);
+                this._addDynamicItem(stopItem);
 
                 let urlItem = new PopupMenu.PopupMenuItem(this._shareUrl || 'URL: unknown', {
                     reactive: false
                 });
-                this._dynamicSection.addMenuItem(urlItem);
+                this._addDynamicItem(urlItem);
             } else if (this._mode === 'receiving') {
                 let stopItem = new PopupMenu.PopupMenuItem('Stop Receiving');
                 stopItem.connect('activate', () => this._onStop());
-                this._dynamicSection.addMenuItem(stopItem);
+                this._addDynamicItem(stopItem);
 
                 let urlItem = new PopupMenu.PopupMenuItem(this._shareUrl || 'URL: unknown', {
                     reactive: false
                 });
-                this._dynamicSection.addMenuItem(urlItem);
+                this._addDynamicItem(urlItem);
             } else {
                 let sendItem = new PopupMenu.PopupMenuItem('Send');
                 sendItem.connect('activate', () => this._onSend());
-                this._dynamicSection.addMenuItem(sendItem);
+                this._addDynamicItem(sendItem);
 
                 let recvItem = new PopupMenu.PopupMenuItem('Receive');
                 recvItem.connect('activate', () => this._onReceive());
-                this._dynamicSection.addMenuItem(recvItem);
+                this._addDynamicItem(recvItem);
             }
         }
 
-        _clearSection(section) {
-            let items = section._getMenuItems();
-            for (let i = items.length - 1; i >= 0; i--) {
-                items[i].destroy();
+        _clearSection() {
+            for (let i = this._dynamicItems.length - 1; i >= 0; i--) {
+                this._dynamicItems[i].destroy();
             }
+            this._dynamicItems = [];
         }
 
         _handleWSEvent(event, data) {
@@ -227,10 +264,12 @@ var LocalShareIndicator = GObject.registerClass(
                     this._rebuildMenu();
                     break;
                 case 'upload_completed':
-                    notify('File Received', data.filename + ' from ' + (data.from_device || 'unknown'));
+                    if (_settings.get_boolean('notify-on-upload'))
+                        notify('File Received', data.filename + ' from ' + (data.from_device || 'unknown'));
                     break;
                 case 'download_completed':
-                    notify('File Downloaded', data.filename + ' by ' + (data.to_device || 'unknown'));
+                    if (_settings.get_boolean('notify-on-download'))
+                        notify('File Downloaded', data.filename + ' by ' + (data.to_device || 'unknown'));
                     break;
                 default:
                     break;
@@ -252,11 +291,79 @@ var LocalShareIndicator = GObject.registerClass(
             if (this._sendDir) {
                 try {
                     let dir = Gio.File.new_for_path(this._sendDir);
-                    dir.delete(null);
+                    if (dir.query_exists(null))
+                        _deleteRecursively(dir);
                 } catch (e) {
-                    GLib.spawn_command_line_sync('rm -rf ' + this._sendDir);
+                    log('[LocalShare] Cleanup error: ' + e);
                 }
                 this._sendDir = null;
+            }
+        }
+
+        _buildStartPayload(sharedDir) {
+            let payload = {
+                port: _settings.get_int('port'),
+                internal_port: _settings.get_int('internal-port')
+            };
+            if (sharedDir)
+                payload.shared_dir = sharedDir;
+            let uploadDir = _settings.get_string('upload-dir');
+            if (uploadDir)
+                payload.upload_dir = uploadDir;
+            return payload;
+        }
+
+        _pickFiles() {
+            return new Promise(resolve => {
+                let chooser = new Gtk.FileChooserNative({
+                    title: 'Select files to send',
+                    action: Gtk.FileChooserAction.OPEN,
+                    select_multiple: true,
+                    modal: true
+                });
+
+                chooser.connect('response', (widget, response) => {
+                    if (response === Gtk.ResponseType.ACCEPT) {
+                        let files = [];
+                        let model = chooser.get_files();
+                        for (let i = 0; i < model.get_n_items(); i++)
+                            files.push(model.get_item(i));
+                        resolve(files);
+                    } else {
+                        resolve(null);
+                    }
+                    chooser.destroy();
+                });
+
+                chooser.show();
+            });
+        }
+
+        async _autoStart() {
+            try {
+                let ok = await ensureBackend();
+                if (!ok) {
+                    notify('LocalShare', 'Failed to start backend.');
+                    return;
+                }
+
+                await httpPost(_internalBase() + '/internal/start', this._buildStartPayload(null));
+
+                let status = await httpGet(_internalBase() + '/internal/status');
+                let ipsData = await httpGet(_internalBase() + '/internal/ips');
+                let ips = ipsData.ips || [];
+                let ip = ips.length > 0 ? ips[0] : 'localhost';
+                this._shareUrl = 'http://' + ip + ':' + (status.port || _settings.get_int('port'));
+
+                this._mode = 'receiving';
+                this._rebuildMenu();
+                this._refresh();
+                _startPolling();
+                _connectWS();
+                notify('LocalShare', 'Sharing started at ' + this._shareUrl);
+            } catch (e) {
+                log('[LocalShare] Auto-start error: ' + e);
+                notify('LocalShare', 'Failed to start. Make sure the server is installed.');
             }
         }
 
@@ -269,31 +376,12 @@ var LocalShareIndicator = GObject.registerClass(
                 }
 
                 if (this._mode === 'receiving') {
-                    await httpPost(INTERNAL_API + '/internal/stop');
+                    await httpPost(_internalBase() + '/internal/stop');
                     this._mode = null;
                     this._knownPendingIds = [];
                 }
 
-                let files = await new Promise(resolve => {
-                    let chooser = new Gtk.FileChooserNative({
-                        title: 'Select files to send',
-                        action: Gtk.FileChooserAction.OPEN,
-                        select_multiple: true,
-                        modal: true
-                    });
-
-                    chooser.connect('response', (widget, response) => {
-                        if (response === Gtk.ResponseType.ACCEPT) {
-                            resolve(chooser.get_files());
-                        } else {
-                            resolve(null);
-                        }
-                        chooser.destroy();
-                    });
-
-                    chooser.show();
-                });
-
+                let files = await this._pickFiles();
                 if (!files || files.length === 0)
                     return;
 
@@ -301,7 +389,7 @@ var LocalShareIndicator = GObject.registerClass(
                 let sendDir = GLib.mkdtemp(tmpBase + '/localshare-send-XXXXXX');
 
                 for (let i = 0; i < files.length; i++) {
-                    let file = files.nth_data(i);
+                    let file = files[i];
                     let sourcePath = file.get_path();
                     let linkName = file.get_basename();
                     let linkPath = sendDir + '/' + linkName;
@@ -316,17 +404,13 @@ var LocalShareIndicator = GObject.registerClass(
 
                 this._sendDir = sendDir;
 
-                await httpPost(INTERNAL_API + '/internal/start', {
-                    port: 8080,
-                    internal_port: 8765,
-                    shared_dir: sendDir
-                });
+                await httpPost(_internalBase() + '/internal/start', this._buildStartPayload(sendDir));
 
-                let status = await httpGet(INTERNAL_API + '/internal/status');
-                let ipsData = await httpGet(INTERNAL_API + '/internal/ips');
+                let status = await httpGet(_internalBase() + '/internal/status');
+                let ipsData = await httpGet(_internalBase() + '/internal/ips');
                 let ips = ipsData.ips || [];
                 let ip = ips.length > 0 ? ips[0] : 'localhost';
-                this._shareUrl = 'http://' + ip + ':' + (status.port || 8080);
+                this._shareUrl = 'http://' + ip + ':' + (status.port || _settings.get_int('port'));
 
                 notify('LocalShare', 'Sending files at ' + this._shareUrl);
 
@@ -344,7 +428,7 @@ var LocalShareIndicator = GObject.registerClass(
         async _onStopSending() {
             this._cleanupSendDir();
             try {
-                await httpPost(INTERNAL_API + '/internal/stop');
+                await httpPost(_internalBase() + '/internal/stop');
             } catch (e) {
                 log('[LocalShare] Stop sending error: ' + e);
             }
@@ -367,21 +451,18 @@ var LocalShareIndicator = GObject.registerClass(
 
                 if (this._mode === 'sending') {
                     this._cleanupSendDir();
-                    await httpPost(INTERNAL_API + '/internal/stop');
+                    await httpPost(_internalBase() + '/internal/stop');
                     this._mode = null;
                     this._knownPendingIds = [];
                 }
 
-                await httpPost(INTERNAL_API + '/internal/start', {
-                    port: 8080,
-                    internal_port: 8765
-                });
+                await httpPost(_internalBase() + '/internal/start', this._buildStartPayload(null));
 
-                let status = await httpGet(INTERNAL_API + '/internal/status');
-                let ipsData = await httpGet(INTERNAL_API + '/internal/ips');
+                let status = await httpGet(_internalBase() + '/internal/status');
+                let ipsData = await httpGet(_internalBase() + '/internal/ips');
                 let ips = ipsData.ips || [];
                 let ip = ips.length > 0 ? ips[0] : 'localhost';
-                this._shareUrl = 'http://' + ip + ':' + (status.port || 8080);
+                this._shareUrl = 'http://' + ip + ':' + (status.port || _settings.get_int('port'));
 
                 notify('LocalShare', 'Receiving files at ' + this._shareUrl);
 
@@ -398,7 +479,7 @@ var LocalShareIndicator = GObject.registerClass(
 
         async _onStop() {
             try {
-                await httpPost(INTERNAL_API + '/internal/stop');
+                await httpPost(_internalBase() + '/internal/stop');
             } catch (e) {
                 log('[LocalShare] Stop error: ' + e);
             }
@@ -416,7 +497,7 @@ var LocalShareIndicator = GObject.registerClass(
                 return;
 
             try {
-                let status = await httpGet(INTERNAL_API + '/internal/status');
+                let status = await httpGet(_internalBase() + '/internal/status');
 
                 if (!status.sharing_enabled) {
                     this._mode = null;
@@ -434,22 +515,22 @@ var LocalShareIndicator = GObject.registerClass(
                 if (status.connected_clients > 0)
                     headerText += ' (' + status.connected_clients + ')';
                 this._header.label.text = headerText;
+                this._header.label.remove_style_class_name('localshare-status-inactive');
+                this._header.label.add_style_class_name('localshare-status-active');
 
-                let ipsData = await httpGet(INTERNAL_API + '/internal/ips');
+                let ipsData = await httpGet(_internalBase() + '/internal/ips');
                 let ips = ipsData.ips || [];
                 let ip = ips.length > 0 ? ips[0] : 'localhost';
-                this._shareUrl = 'http://' + ip + ':' + (status.port || 8080);
+                this._shareUrl = 'http://' + ip + ':' + (status.port || _settings.get_int('port'));
 
                 this._rebuildMenu();
 
                 try {
-                    let pendingData = await httpGet(INTERNAL_API + '/internal/pending');
+                    let pendingData = await httpGet(_internalBase() + '/internal/pending');
                     let pending = pendingData.pending || [];
 
                     if (pending.length > 0) {
-                        this._dynamicSection.addMenuItem(
-                            new PopupMenu.PopupSeparatorMenuItem()
-                        );
+                        this._addDynamicItem(new PopupMenu.PopupSeparatorMenuItem());
                     }
 
                     pending.forEach(client => {
@@ -465,30 +546,28 @@ var LocalShareIndicator = GObject.registerClass(
 
                         let approveItem = new PopupMenu.PopupMenuItem('\u2713 ' + label);
                         approveItem.connect('activate', () => this._approveClient(client.id));
-                        this._dynamicSection.addMenuItem(approveItem);
+                        this._addDynamicItem(approveItem);
 
                         let rejectItem = new PopupMenu.PopupMenuItem('\u2717 ' + label);
                         rejectItem.connect('activate', () => this._rejectClient(client.id));
-                        this._dynamicSection.addMenuItem(rejectItem);
+                        this._addDynamicItem(rejectItem);
                     });
                 } catch (e) {
                     log('[LocalShare] Pending error: ' + e);
                 }
 
                 try {
-                    let clientsData = await httpGet(INTERNAL_API + '/internal/clients');
+                    let clientsData = await httpGet(_internalBase() + '/internal/clients');
                     let connected = clientsData.connected || [];
 
                     if (connected.length > 0) {
-                        this._dynamicSection.addMenuItem(
-                            new PopupMenu.PopupSeparatorMenuItem()
-                        );
+                        this._addDynamicItem(new PopupMenu.PopupSeparatorMenuItem());
                     }
 
                     connected.forEach(client => {
                         let label = (client.device || 'Unknown') + ' (' + (client.ip || '') + ')';
                         let item = new PopupMenu.PopupMenuItem('  ' + label, { reactive: false });
-                        this._dynamicSection.addMenuItem(item);
+                        this._addDynamicItem(item);
                     });
                 } catch (e) {
                     log('[LocalShare] Clients error: ' + e);
@@ -500,7 +579,7 @@ var LocalShareIndicator = GObject.registerClass(
 
         async _approveClient(clientId) {
             try {
-                await httpPost(INTERNAL_API + '/internal/approve/' + clientId);
+                await httpPost(_internalBase() + '/internal/approve/' + clientId);
                 this._refresh();
             } catch (e) {
                 log('[LocalShare] Approve error: ' + e);
@@ -509,7 +588,7 @@ var LocalShareIndicator = GObject.registerClass(
 
         async _rejectClient(clientId) {
             try {
-                await httpPost(INTERNAL_API + '/internal/reject/' + clientId);
+                await httpPost(_internalBase() + '/internal/reject/' + clientId);
                 this._refresh();
             } catch (e) {
                 log('[LocalShare] Reject error: ' + e);
@@ -517,128 +596,11 @@ var LocalShareIndicator = GObject.registerClass(
         }
 
         _openSettings() {
-            let win = new LocalShareSettingsWindow();
-            win._show();
+            try {
+                Main.openExtensionPrefs(_extension.uuid);
+            } catch (e) {
+                log('[LocalShare] Open prefs error: ' + e);
+            }
         }
     }
 );
-
-var LocalShareSettingsWindow = class {
-    constructor() {
-        this._window = null;
-    }
-
-    async _show() {
-        let Gtk = imports.gi.Gtk;
-        let Adw = imports.gi.Adw;
-
-        let config;
-        try {
-            config = await httpGet(INTERNAL_API + '/internal/config');
-        } catch (e) {
-            notify('LocalShare', 'Could not load settings. Is the backend running?');
-            return;
-        }
-
-        let pathEntry = new Adw.EntryRow({
-            title: 'Receive Path'
-        });
-        pathEntry.set_text(config.upload_dir || '');
-        pathEntry.set_editable(false);
-
-        let browseBtn = new Gtk.Button({ label: 'Browse' });
-        browseBtn.add_css_class('flat');
-        browseBtn.connect('clicked', () => {
-            let chooser = new Gtk.FileChooserNative({
-                title: 'Select Receiving Folder',
-                action: Gtk.FileChooserAction.SELECT_FOLDER,
-                modal: true
-            });
-
-            let currentPath = pathEntry.get_text();
-            if (currentPath) {
-                try {
-                    let file = Gio.File.new_for_path(currentPath);
-                    if (file.query_exists(null))
-                        chooser.set_file(file);
-                } catch (e) {}
-            }
-
-            chooser.connect('response', (widget, response) => {
-                if (response === Gtk.ResponseType.ACCEPT) {
-                    let folder = chooser.get_file();
-                    if (folder)
-                        pathEntry.set_text(folder.get_path());
-                }
-                chooser.destroy();
-            });
-
-            chooser.show();
-        });
-        pathEntry.add_suffix(browseBtn);
-
-        let group = new Adw.PreferencesGroup();
-        group.add(pathEntry);
-
-        let page = new Adw.PreferencesPage();
-        page.add(group);
-
-        let saveBtn = new Gtk.Button({ label: 'Save', halign: Gtk.Align.END });
-        saveBtn.add_css_class('suggested-action');
-        saveBtn.connect('clicked', async () => {
-            let newPath = pathEntry.get_text().trim();
-            if (!newPath)
-                return;
-
-            saveBtn.sensitive = false;
-            saveBtn.label = 'Saving...';
-
-            try {
-                await httpPut(INTERNAL_API + '/internal/config', {
-                    upload_dir: newPath
-                });
-                notify('LocalShare', 'Receive path saved');
-                win.close();
-            } catch (e) {
-                log('[LocalShare] Settings save error: ' + e);
-                notify('LocalShare', 'Failed to save settings');
-                saveBtn.sensitive = true;
-                saveBtn.label = 'Save';
-            }
-        });
-
-        let toolbar = new Gtk.Box({
-            orientation: Gtk.Orientation.HORIZONTAL,
-            margin_top: 12,
-            margin_bottom: 12,
-            margin_start: 12,
-            margin_end: 12,
-            hexpand: true
-        });
-        toolbar.append(saveBtn);
-
-        let hdr = new Adw.HeaderBar();
-
-        let content = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL });
-        content.append(hdr);
-        content.append(page);
-        content.append(toolbar);
-
-        let win = new Adw.Window({
-            title: 'LocalShare Settings',
-            default_width: 450,
-            default_height: 250,
-            modal: true
-        });
-        win.set_content(content);
-        win.present();
-        this._window = win;
-    }
-
-    destroy() {
-        if (this._window) {
-            this._window.close();
-            this._window = null;
-        }
-    }
-};

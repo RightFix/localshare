@@ -4,9 +4,8 @@
     padding: 4px;
 }
 
-.localshare-popover {
-    padding: 12px;
-    min-width: 280px;
+.localshare-header-label {
+    font-weight: bold;
 }
 
 .localshare-status-active {
@@ -14,5 +13,5 @@
 }
 
 .localshare-status-inactive {
-    color: #5e5e5e;
+    color: #9a9996;
 }

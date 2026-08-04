@@ -1,10 +1,14 @@
 'use strict';
 
-const Self = imports.misc.extensionUtils.getCurrentExtension();
-Self.imports = imports;
-imports.searchPath.unshift(Self.dir.get_path());
-const main = Self.imports.src.main;
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+import { enable as _enable, disable as _disable } from './src/main.js';
 
-var init = main.init;
-var enable = main.enable;
-var disable = main.disable;
+export default class LocalShareExtension extends Extension {
+    enable() {
+        _enable(this);
+    }
+
+    disable() {
+        _disable();
+    }
+}

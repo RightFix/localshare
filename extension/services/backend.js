@@ -1,43 +1,54 @@
 /* Backend process manager for LocalShare extension.
  *
  * Manages the Python FastAPI backend subprocess lifecycle.
- * The backend runs on 127.0.0.1:8765 and is spawned on demand
+ * The backend runs on 127.0.0.1:<internal-port> and is spawned on demand
  * when the user clicks "Send" or "Receive".
  *
  * On first run, auto-creates a Python venv and installs
  * dependencies so the extension works out of the box when
- * installed from extensions.gnome.org.
+ * installed from extensions.gnome.org. All runtime data and
+ * the virtual environment live under $XDG_DATA_HOME/localshare,
+ * never inside the extension install directory.
  */
 
 'use strict';
 
-const { Gio, GLib } = imports.gi;
-const Main = imports.ui.main;
-const Self = imports.misc.extensionUtils.getCurrentExtension();
-const { httpGet } = imports.services.http;
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import { httpGet } from './http.js';
 
-const INTERNAL_API = 'http://127.0.0.1:8765';
 const MAX_RETRIES = 15;
 const RETRY_INTERVAL_MS = 500;
+
+let _extensionDir = null;
+let _dataDir = null;
+let _internalPort = 8765;
 
 let _backendProcess = null;
 let _starting = false;
 let _installing = false;
 
-function _getExtDir() {
-    return Self.dir.get_path();
+function _internalBase() {
+    return 'http://127.0.0.1:' + _internalPort;
+}
+
+export function init(extensionDir, settings) {
+    _extensionDir = extensionDir;
+    _internalPort = settings.get_int('internal-port');
+    _dataDir = GLib.get_user_data_dir() + '/localshare';
 }
 
 function _getVenvPython() {
-    return _getExtDir() + '/venv/bin/python';
+    return _dataDir + '/venv/bin/python';
 }
 
 function _getBackendRunPy() {
-    return _getExtDir() + '/backend/run.py';
+    return _extensionDir + '/backend/run.py';
 }
 
 function _getRequirementsTxt() {
-    return _getExtDir() + '/requirements.txt';
+    return _extensionDir + '/backend/requirements.txt';
 }
 
 function _notify(title, body) {
@@ -45,6 +56,14 @@ function _notify(title, body) {
         Main.notify(title, body);
     } catch (e) {
         log('[LocalShare Backend] Notify error: ' + e);
+    }
+}
+
+function _ensureDataDir() {
+    try {
+        Gio.File.new_for_path(_dataDir).make_directory_with_parents(null);
+    } catch (e) {
+        log('[LocalShare Backend] Data dir error: ' + e);
     }
 }
 
@@ -99,7 +118,7 @@ async function _ensureVenv() {
 
     _notify('LocalShare', 'Setting up Python environment...');
 
-    let extDir = _getExtDir();
+    _ensureDataDir();
     let pythonBin = await _findPython();
 
     if (!pythonBin) {
@@ -109,7 +128,7 @@ async function _ensureVenv() {
     }
 
     log('[LocalShare Backend] Creating venv...');
-    let ok = await _runSubprocess([pythonBin, '-m', 'venv', extDir + '/venv']);
+    let ok = await _runSubprocess([pythonBin, '-m', 'venv', _dataDir + '/venv']);
     if (!ok) {
         log('[LocalShare Backend] Venv creation failed');
         _notify('LocalShare', 'Failed to create Python environment.');
@@ -143,7 +162,7 @@ function _isProcessRunning() {
 
 async function _checkServer() {
     try {
-        await httpGet(INTERNAL_API + '/internal/status');
+        await httpGet(_internalBase() + '/internal/status');
         return true;
     } catch (e) {
         return false;
@@ -155,12 +174,20 @@ function _spawnBackend() {
 
     let python = _getVenvPython();
     let script = _getBackendRunPy();
+    let args = [
+        python,
+        script,
+        '--internal-port',
+        String(_internalPort),
+        '--data-dir',
+        _dataDir
+    ];
 
-    log('[LocalShare Backend] Spawning: ' + python + ' ' + script);
+    log('[LocalShare Backend] Spawning: ' + args.join(' '));
 
     try {
         _backendProcess = Gio.Subprocess.new(
-            [python, script],
+            args,
             Gio.SubprocessFlags.NONE
         );
         return true;
@@ -197,7 +224,7 @@ function _delay(ms) {
     });
 }
 
-var ensureBackend = async function () {
+export var ensureBackend = async function () {
     if (_starting) {
         log('[LocalShare Backend] Already starting, waiting...');
         for (let i = 0; i < MAX_RETRIES; i++) {
@@ -247,7 +274,7 @@ var ensureBackend = async function () {
     return false;
 };
 
-var stopBackend = function () {
+export var stopBackend = function () {
     _starting = false;
     if (_backendProcess) {
         log('[LocalShare Backend] Stopping...');
@@ -255,6 +282,6 @@ var stopBackend = function () {
     }
 };
 
-var isBackendRunning = function () {
+export var isBackendRunning = function () {
     return _isProcessRunning();
 };
