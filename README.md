@@ -4,13 +4,45 @@ Share files between devices on your local network through a web browser.
 
 The receiving device needs nothing installed — just a browser (Android, iPhone, Windows, macOS, Linux).
 
-## Features
+## How it works
 
-- Share and receive files from the GNOME Shell panel
-- Desktop notifications for connection requests and uploads
-- Per-device approval — no passwords or accounts
-- Drag-and-drop uploads and folder browsing from any browser on your network
-- No file size limits, active until you turn it off
+LocalShare is a GNOME Shell extension that runs a small Python backend on your machine.
+
+On first use the extension sets up everything itself: it creates a Python virtualenv under
+`$XDG_DATA_HOME/localshare/venv`, installs the backend dependencies, and starts the backend process.
+Nothing needs to be configured manually.
+
+The backend runs **two servers in a single process**, sharing one storage layer and one event bus:
+
+- **Internal server** (loopback only, `127.0.0.1:8765`) — the API the extension talks to, plus the
+  extension's websocket (`/internal/ws/events`). Only reachable from your machine.
+- **Browser server** (LAN, port 8080 by default) — the web UI, file upload/download endpoints
+  (`/api/*`), and the client websocket (`/ws/client`). This is what other devices connect to.
+
+Both servers share the same in-memory state, so when a browser connects the extension hears about it
+instantly through the event bus.
+
+**Connection flow**
+
+1. A device opens the shown URL, and its browser connects to the client websocket.
+2. The extension shows a notification asking you to approve or reject the device.
+3. On approval, a session token is created and pushed back through the event bus to the browser.
+4. The browser is now authenticated and can upload or download files.
+
+**File transfer**
+
+- Uploads are streamed straight to disk in chunks into the folder you picked, with no size limits.
+- Downloads are served directly from disk, with symlink escape attempts blocked.
+- Progress and completions arrive as desktop notifications (`upload_completed`, `download_completed`).
+- State (config, pending clients, sessions, activity) is persisted as JSON files with atomic writes,
+  so a restart loses nothing important.
+
+## Usage
+
+1. Click the LocalShare icon in the top panel.
+2. Choose **Send** or **Receive**.
+3. Other devices open the shown URL in their browser.
+4. Approve or reject connection requests from the menu.
 
 ## Requirements
 
@@ -22,29 +54,15 @@ The receiving device needs nothing installed — just a browser (Android, iPhone
 ```bash
 git clone https://github.com/RightFix/LocalShare.git
 cd LocalShare
-./extension/setup.sh          # create venv + install dependencies
 ln -s "$(pwd)/extension" ~/.local/share/gnome-shell/extensions/localshare@rightfix.com
 ```
 
 Restart GNOME Shell (Alt+F2, type `r`, Enter) and enable the extension.
 
-## Usage
-
-1. Click the LocalShare icon in the top panel.
-2. Choose **Send** or **Receive**.
-3. Other devices open the shown URL in their browser.
-4. Approve or reject connection requests from the menu.
-
-## Development
-
-```bash
-./extension/setup.sh run      # start the backend (uses the venv)
-```
-
 ## Publish
 
 ```bash
-cd extension && zip -r ../localshare@rightfix.com.zip . -x 'venv/*' '.venv/*' '*/__pycache__/*' 'data/*' '*.pyc' && cd ..
+cd extension && zip -r ../localshare@rightfix.com.zip . -x '*/.venv/*' '*/__pycache__/*' '*.pyc' 'data/*' 'backend/data/*' 'backend/uv.lock' 'backend/pyproject.toml' && cd ..
 ```
 
 Upload the zip at https://extensions.gnome.org/upload/
