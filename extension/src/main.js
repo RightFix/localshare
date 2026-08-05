@@ -49,6 +49,7 @@ export function enable(extension) {
     _settings = extension.getSettings();
     initBackend(extension.dir.get_path(), _settings);
     indicator = new LocalShareIndicator();
+    Main.panel.addToStatusArea('localshare', indicator, 0, 'right');
 
     if (_settings.get_boolean('auto-start'))
         indicator._autoStart();
