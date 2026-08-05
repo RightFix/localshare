@@ -410,7 +410,7 @@ var LocalShareIndicator = GObject.registerClass(
             try {
                 let ok = await ensureBackend();
                 if (!ok) {
-                    notify('LocalShare', 'Failed to start backend. Is Python 3.12+ installed?');
+                    notify('LocalShare', 'Failed to start backend.');
                     return;
                 }
 

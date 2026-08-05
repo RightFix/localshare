@@ -40,7 +40,11 @@ export function init(extensionDir, settings) {
 }
 
 function _getVenvPython() {
-    return _dataDir + '/venv/bin/python';
+    return _dataDir + '/venv/bin/python3';
+}
+
+function _getVenvMarker() {
+    return _dataDir + '/venv/.installed';
 }
 
 function _getBackendRunPy() {
@@ -102,10 +106,12 @@ async function _findPython() {
 
 async function _ensureVenv() {
     let venvPython = _getVenvPython();
+    let venvMarker = _getVenvMarker();
 
     try {
         let venvFile = Gio.File.new_for_path(venvPython);
-        if (venvFile.query_exists(null)) {
+        let markerFile = Gio.File.new_for_path(venvMarker);
+        if (venvFile.query_exists(null) && markerFile.query_exists(null)) {
             log('[LocalShare Backend] Venv python found');
             return true;
         }
@@ -143,6 +149,12 @@ async function _ensureVenv() {
         _notify('LocalShare', 'Failed to install Python packages. Check your internet connection.');
         _installing = false;
         return false;
+    }
+
+    try {
+        Gio.File.new_for_path(venvMarker).create(Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+    } catch (e) {
+        log('[LocalShare Backend] Marker write error: ' + e);
     }
 
     log('[LocalShare Backend] Venv setup complete');
@@ -261,13 +273,16 @@ export var ensureBackend = async function () {
         return true;
     }
 
+    _starting = true;
+    log('[LocalShare Backend] Setting up backend...');
+
     let venvOk = await _ensureVenv();
     if (!venvOk) {
         log('[LocalShare Backend] Venv setup failed');
+        _starting = false;
         return false;
     }
 
-    _starting = true;
     log('[LocalShare Backend] Starting backend...');
 
     if (!_spawnBackend()) {
