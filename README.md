@@ -6,11 +6,9 @@ The receiving device needs nothing installed — just a browser (Android, iPhone
 
 ## How it works
 
-LocalShare is a GNOME Shell extension that runs a small Python backend on your machine.
-
-On first use the extension sets up everything itself: it creates a Python virtualenv under
-`$XDG_DATA_HOME/localshare/venv`, installs the backend dependencies, and starts the backend process.
-Nothing needs to be configured manually.
+LocalShare is a GNOME Shell extension that runs a small, self-contained backend written in **Rust**.
+The backend ships as a prebuilt binary inside the extension, so **no Python, virtualenv, or package
+installation is ever needed** — it works out of the box when installed from extensions.gnome.org.
 
 The backend runs **two servers in a single process**, sharing one storage layer and one event bus:
 
@@ -56,7 +54,18 @@ instantly through the event bus.
 ## Requirements
 
 - GNOME Shell 48, 49, or 50
-- Python 3.12+
+
+## Building the backend
+
+The Rust backend lives in `extension/backend-rust/`. To rebuild the binary:
+
+```bash
+cd extension/backend-rust
+cargo build --release
+```
+
+The release binary is written to `extension/backend-rust/target/release/localshare-backend`.
+Copy it to `extension/backend-rust/localshare-backend` before packaging the zip (see below).
 
 ## Install
 
@@ -70,10 +79,15 @@ Restart GNOME Shell (Alt+F2, type `r`, Enter) and enable the extension.
 
 ## Publish
 
+Build the binary first (see above), then package:
+
 ```bash
-cd extension && zip -r ../localshare@rightfix.com.zip . -x '*/.venv/*' '*/__pycache__/*' '*.pyc' 'data/*' 'backend/data/*' 'backend/uv.lock' 'backend/pyproject.toml' && cd ..
+cp extension/backend-rust/target/release/localshare-backend extension/backend-rust/localshare-backend
+rm -f localshare@rightfix.com.zip
+cd extension && zip -r ../localshare@rightfix.com.zip . -x 'backend-rust/target/*' 'backend-rust/Cargo.lock' && cd ..
 ```
 
+The binary is prebuilt per-architecture, so rebuild it on each target architecture before uploading.
 Upload the zip at https://extensions.gnome.org/upload/
 
 ## License

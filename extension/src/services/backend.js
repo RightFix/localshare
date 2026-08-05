@@ -1,14 +1,13 @@
 /* Backend process manager for LocalShare extension.
  *
- * Manages the Python FastAPI backend subprocess lifecycle.
+ * Manages the compiled Rust backend subprocess lifecycle.
  * The backend runs on 127.0.0.1:<internal-port> and is spawned on demand
  * when the user clicks "Send" or "Receive".
  *
- * On first run, auto-creates a Python venv and installs
- * dependencies so the extension works out of the box when
- * installed from extensions.gnome.org. All runtime data and
- * the virtual environment live under $XDG_DATA_HOME/localshare,
- * never inside the extension install directory.
+ * The backend ships as a prebuilt, self-contained binary inside the
+ * extension directory (backend-rust/localshare-backend), so no Python,
+ * venv, or package installation is ever required at runtime. Runtime
+ * JSON data lives under $XDG_DATA_HOME/localshare.
  */
 
 'use strict';
@@ -27,7 +26,6 @@ let _internalPort = 8765;
 
 let _backendProcess = null;
 let _starting = false;
-let _installing = false;
 
 function _internalBase() {
     return 'http://127.0.0.1:' + _internalPort;
@@ -39,20 +37,8 @@ export function init(extensionDir, settings) {
     _dataDir = GLib.get_user_data_dir() + '/localshare';
 }
 
-function _getVenvPython() {
-    return _dataDir + '/venv/bin/python3';
-}
-
-function _getVenvMarker() {
-    return _dataDir + '/venv/.installed';
-}
-
-function _getBackendRunPy() {
-    return _extensionDir + '/backend/run.py';
-}
-
-function _getRequirementsTxt() {
-    return _extensionDir + '/backend/requirements.txt';
+function _getBackendBinary() {
+    return _extensionDir + '/backend-rust/localshare-backend';
 }
 
 function _notify(title, body) {
@@ -69,98 +55,6 @@ function _ensureDataDir() {
     } catch (e) {
         log('[LocalShare Backend] Data dir error: ' + e);
     }
-}
-
-function _runSubprocess(args) {
-    return new Promise(resolve => {
-        try {
-            let proc = Gio.Subprocess.new(
-                args,
-                Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE
-            );
-            proc.wait_async(null, (proc_, result) => {
-                try {
-                    let ok = proc_.wait_finish(result);
-                    resolve(ok);
-                } catch (e) {
-                    resolve(false);
-                }
-            });
-        } catch (e) {
-            resolve(false);
-        }
-    });
-}
-
-async function _findPython() {
-    let candidates = ['python3', 'python3.13', 'python3.12'];
-    for (let candidate of candidates) {
-        let ok = await _runSubprocess([candidate, '--version']);
-        if (ok) {
-            log('[LocalShare Backend] Found python: ' + candidate);
-            return candidate;
-        }
-    }
-    return null;
-}
-
-async function _ensureVenv() {
-    let venvPython = _getVenvPython();
-    let venvMarker = _getVenvMarker();
-
-    try {
-        let venvFile = Gio.File.new_for_path(venvPython);
-        let markerFile = Gio.File.new_for_path(venvMarker);
-        if (venvFile.query_exists(null) && markerFile.query_exists(null)) {
-            log('[LocalShare Backend] Venv python found');
-            return true;
-        }
-    } catch (e) {
-        log('[LocalShare Backend] Venv check error: ' + e);
-    }
-
-    if (_installing) return false;
-    _installing = true;
-
-    _notify('LocalShare', 'Setting up Python environment...');
-
-    _ensureDataDir();
-    let pythonBin = await _findPython();
-
-    if (!pythonBin) {
-        _notify('LocalShare', 'Python 3.12+ not found. Install it and try again.');
-        _installing = false;
-        return false;
-    }
-
-    log('[LocalShare Backend] Creating venv...');
-    let ok = await _runSubprocess([pythonBin, '-m', 'venv', _dataDir + '/venv']);
-    if (!ok) {
-        log('[LocalShare Backend] Venv creation failed');
-        _notify('LocalShare', 'Failed to create Python environment.');
-        _installing = false;
-        return false;
-    }
-
-    log('[LocalShare Backend] Installing requirements...');
-    ok = await _runSubprocess([venvPython, '-m', 'pip', 'install', '-r', _getRequirementsTxt()]);
-    if (!ok) {
-        log('[LocalShare Backend] Pip install failed');
-        _notify('LocalShare', 'Failed to install Python packages. Check your internet connection.');
-        _installing = false;
-        return false;
-    }
-
-    try {
-        Gio.File.new_for_path(venvMarker).create(Gio.FileCreateFlags.REPLACE_DESTINATION, null);
-    } catch (e) {
-        log('[LocalShare Backend] Marker write error: ' + e);
-    }
-
-    log('[LocalShare Backend] Venv setup complete');
-    _notify('LocalShare', 'Python environment ready');
-    _installing = false;
-    return true;
 }
 
 function _isProcessRunning() {
@@ -184,11 +78,16 @@ async function _checkServer() {
 function _spawnBackend() {
     if (_isProcessRunning()) return true;
 
-    let python = _getVenvPython();
-    let script = _getBackendRunPy();
+    let binary = _getBackendBinary();
+    let binaryFile = Gio.File.new_for_path(binary);
+    if (!binaryFile.query_exists(null)) {
+        log('[LocalShare Backend] Backend binary not found: ' + binary);
+        _notify('LocalShare', 'Backend binary is missing. Reinstall the extension.');
+        return false;
+    }
+
     let args = [
-        python,
-        script,
+        binary,
         '--internal-port',
         String(_internalPort),
         '--data-dir',
@@ -276,12 +175,7 @@ export var ensureBackend = async function () {
     _starting = true;
     log('[LocalShare Backend] Setting up backend...');
 
-    let venvOk = await _ensureVenv();
-    if (!venvOk) {
-        log('[LocalShare Backend] Venv setup failed');
-        _starting = false;
-        return false;
-    }
+    _ensureDataDir();
 
     log('[LocalShare Backend] Starting backend...');
 

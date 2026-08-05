@@ -6,6 +6,10 @@ dist/
 wheels/
 *.egg-info
 
+# Rust build output
+extension/backend-rust/target/
+extension/backend-rust/localshare-backend
+
 # Virtual environments
 .venv
 extension/venv/
@@ -21,6 +25,7 @@ BACKEND_BUGS.txt
 front_end_bug.txt
 uv.lock
 pyproject.toml
+to_rust.txt
 
 # OS files
 .DS_Store
