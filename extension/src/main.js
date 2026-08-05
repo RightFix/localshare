@@ -187,6 +187,8 @@ var LocalShareIndicator = GObject.registerClass(
             let settingsItem = new PopupMenuItem('Settings');
             settingsItem.connect('activate', () => this._openSettings());
             this.menu.addMenuItem(settingsItem);
+
+            this._rebuildMenu();
         }
 
         _addDynamicItem(item) {
