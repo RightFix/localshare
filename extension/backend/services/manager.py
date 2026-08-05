@@ -83,6 +83,7 @@ class ServerManager:
         self._ws_callback: Callable | None = None
         self._upload_callback: Callable | None = None
         self._download_callback: Callable | None = None
+        self._send_files: dict[str, Path] = {}
 
     def set_ws_callback(self, callback: Callable) -> None:
         """Set callback for WebSocket events to extension."""
@@ -96,6 +97,44 @@ class ServerManager:
         """Set callback for download events to extension."""
         self._download_callback = callback
 
+    def set_send_files(self, paths: list[Path]) -> dict[str, Path]:
+        """Register the absolute paths to share in Send mode.
+
+        Names are derived from each file's basename, deduplicated with a
+        ``_N`` suffix, and each target must be an absolute path to an
+        existing regular file (resolved). Returns the resulting map.
+        """
+        self._send_files = self._build_send_map(paths)
+        return dict(self._send_files)
+
+    def clear_send_files(self) -> None:
+        """Drop the registered Send-mode file map."""
+        self._send_files = {}
+
+    def get_send_files(self) -> dict[str, Path]:
+        """Return the current Send-mode file map (name -> resolved path)."""
+        return dict(self._send_files)
+
+    def _build_send_map(self, paths: list[Path]) -> dict[str, Path]:
+        """Build a {name: resolved path} map from absolute file paths."""
+        result: dict[str, Path] = {}
+        for raw in paths:
+            p = Path(raw)
+            if not p.is_absolute():
+                continue
+            resolved = p.resolve()
+            if not resolved.is_file():
+                continue
+            base = p.name
+            name = base
+            counter = 1
+            while name in result or not name:
+                stem, suffix = p.stem, p.suffix
+                name = f"{stem}_{counter}{suffix}"
+                counter += 1
+            result[name] = resolved
+        return result
+
     async def start(
         self,
         port: int,
@@ -104,6 +143,8 @@ class ServerManager:
         shared_dir: Path,
     ) -> bool:
         """Start the LAN browser server in-process on 0.0.0.0:{port}."""
+        self.clear_send_files()
+
         config = await self.storage.get_config()
         config.port = port
         config.internal_port = internal_port
@@ -196,6 +237,7 @@ class ServerManager:
 
         await self._stop_lan_server()
         await self.storage.disable_sharing()
+        self.clear_send_files()
 
         logger.info("LocalShare server stopped")
 
@@ -215,6 +257,7 @@ class ServerManager:
 
     async def approve_client(self, client_id: str) -> Session | None:
         """Approve a pending client."""
+
         def _approve(clients: ClientsData) -> None:
             clients.approve(client_id)
 
@@ -263,7 +306,9 @@ class ServerManager:
             return False
 
         if self._ws_callback:
-            await self._ws_callback({"action": ACTION_CLIENT_REJECTED, "client_id": client_id})
+            await self._ws_callback(
+                {"action": ACTION_CLIENT_REJECTED, "client_id": client_id}
+            )
 
         logger.info(f"Rejected client: {client.device} ({client.ip})")
         return True
@@ -297,7 +342,9 @@ class ServerManager:
         logger.info(f"Disconnected session: {session.id}")
         return True
 
-    async def add_pending_client(self, device: str, ip: str, user_agent: str = "") -> str:
+    async def add_pending_client(
+        self, device: str, ip: str, user_agent: str = ""
+    ) -> str:
         """Add a new pending client."""
         created: dict = {}
 
@@ -339,6 +386,7 @@ class ServerManager:
 
     async def notify_upload(self, filename: str, size: int, from_device: str) -> None:
         """Record and notify about an upload."""
+
         def _record(activity: ActivityData) -> None:
             activity.add_upload(filename=filename, size=size, from_device=from_device)
 
@@ -356,6 +404,7 @@ class ServerManager:
 
     async def notify_download(self, filename: str, size: int, to_device: str) -> None:
         """Record and notify about a download."""
+
         def _record(activity: ActivityData) -> None:
             activity.add_download(filename=filename, size=size, to_device=to_device)
 

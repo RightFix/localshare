@@ -4,7 +4,7 @@ import Adw from 'gi://Adw?version=1';
 import Gtk from 'gi://Gtk?version=4.0';
 import Gio from 'gi://Gio';
 import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
-import { httpPut } from './services/http.js';
+import { httpPut } from './src/services/http.js';
 
 const CONFIG_KEYS = [
     'upload-dir',

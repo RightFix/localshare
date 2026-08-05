@@ -18,6 +18,7 @@ extension/schemas/gschemas.compiled
 
 # Project-local files
 BACKEND_BUGS.txt
+front_end_bug.txt
 uv.lock
 pyproject.toml
 

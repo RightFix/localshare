@@ -198,21 +198,42 @@ function _spawnBackend() {
 }
 
 function _killBackend() {
-    if (!_backendProcess) return;
-    try {
-        _backendProcess.send_signal(15);
-        _backendProcess.wait(2000);
-    } catch (e) {
-        log('[LocalShare Backend] Kill error: ' + e);
-    }
-    if (_isProcessRunning()) {
-        try {
-            _backendProcess.force_exit();
-        } catch (e) {
-            log('[LocalShare Backend] Force exit error: ' + e);
-        }
-    }
+    if (!_backendProcess)
+        return;
+
+    let proc = _backendProcess;
     _backendProcess = null;
+
+    try {
+        proc.send_signal(15);
+    } catch (e) {
+        log('[LocalShare Backend] Send signal error: ' + e);
+    }
+
+    proc.wait_check_async(null, (proc_, result) => {
+        try {
+            proc_.wait_check_finish(result);
+        } catch (e) {
+            log('[LocalShare Backend] Wait error: ' + e);
+        }
+    });
+
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+        let running = false;
+        try {
+            running = proc.get_if_running();
+        } catch (e) {
+            log('[LocalShare Backend] Process state error: ' + e);
+        }
+        if (running) {
+            try {
+                proc.force_exit();
+            } catch (e) {
+                log('[LocalShare Backend] Force exit error: ' + e);
+            }
+        }
+        return GLib.SOURCE_REMOVE;
+    });
 }
 
 function _delay(ms) {

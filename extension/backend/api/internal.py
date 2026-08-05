@@ -1,8 +1,9 @@
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from models.config import Config
 from services.network import get_all_local_ips
@@ -10,6 +11,42 @@ from services.network import get_all_local_ips
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/internal")
+
+
+class SendFilesRequest(BaseModel):
+    """Payload for registering Send-mode files (absolute paths)."""
+
+    files: list[str] = []
+
+
+@router.get("/send-files")
+async def internal_get_send_files(request: Request) -> dict:
+    """Get the currently registered Send-mode file map."""
+    server_manager = request.app.state.server_manager
+    send_files = server_manager.get_send_files()
+    return {
+        "files": [
+            {"name": name, "path": str(path)} for name, path in send_files.items()
+        ]
+    }
+
+
+@router.put("/send-files", response_model=None)
+async def internal_set_send_files(payload: SendFilesRequest, request: Request) -> dict:
+    """Register the exact absolute paths to share in Send mode.
+
+    Loopback-only (the LAN app does not mount the internal router), so only
+    the GNOME extension can set these. The browser list/download routes then
+    serve exactly these paths by name; shared_dir containment is untouched.
+    """
+    server_manager = request.app.state.server_manager
+    send_files = server_manager.set_send_files([Path(p) for p in payload.files])
+    return {
+        "status": "success",
+        "files": [
+            {"name": name, "path": str(path)} for name, path in send_files.items()
+        ],
+    }
 
 
 @router.get("/status", response_model=None)

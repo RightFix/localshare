@@ -7,9 +7,13 @@ import St from 'gi://St';
 import Soup from 'gi://Soup';
 import Gtk from 'gi://Gtk?version=4.0';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import { PanelMenu } from 'resource:///org/gnome/shell/ui/panelMenu.js';
-import { PopupMenu } from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import { getSession, httpGet, httpPost } from './services/http.js';
+import { Button as PanelMenuButton } from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import {
+    PopupMenuItem,
+    PopupMenuSection,
+    PopupSeparatorMenuItem
+} from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import { getSession, httpGet, httpPost, httpPut } from './services/http.js';
 import { init as initBackend, ensureBackend, stopBackend } from './services/backend.js';
 
 const WS_RECONNECT_DELAY = 3000;
@@ -21,6 +25,7 @@ let indicator = null;
 let pollTimer = null;
 let wsConnection = null;
 let wsReconnectId = null;
+let wsEnabled = false;
 
 function _internalBase() {
     return 'http://127.0.0.1:' + _settings.get_int('internal-port');
@@ -54,7 +59,6 @@ export function disable() {
     _stopPolling();
     _disconnectWS();
     if (indicator) {
-        indicator._cleanupSendDir();
         indicator._mode = null;
     }
     stopBackend();
@@ -82,6 +86,8 @@ function _stopPolling() {
 }
 
 function _connectWS() {
+    if (!wsEnabled)
+        return;
     if (wsConnection)
         return;
 
@@ -109,7 +115,8 @@ function _connectWS() {
                 wsConnection.connect('closed', () => {
                     log('[LocalShare] WS closed');
                     wsConnection = null;
-                    _scheduleWSReconnect();
+                    if (wsEnabled)
+                        _scheduleWSReconnect();
                 });
             } catch (e) {
                 log('[LocalShare] WS connect error: ' + e);
@@ -134,6 +141,7 @@ function _scheduleWSReconnect() {
 }
 
 function _disconnectWS() {
+    wsEnabled = false;
     if (wsReconnectId) {
         GLib.source_remove(wsReconnectId);
         wsReconnectId = null;
@@ -148,32 +156,13 @@ function _disconnectWS() {
     }
 }
 
-function _deleteRecursively(file) {
-    let enumerator = file.enumerate_children(
-        'standard::*',
-        Gio.FileQueryInfoFlags.NONE,
-        null
-    );
-    let info;
-    while ((info = enumerator.next_file(null)) !== null) {
-        let child = enumerator.get_child(info);
-        if (info.get_file_type() === Gio.FileType.DIRECTORY)
-            _deleteRecursively(child);
-        else
-            child.delete(null);
-    }
-    enumerator.close(null);
-    file.delete(null);
-}
-
 var LocalShareIndicator = GObject.registerClass(
-    class LocalShareIndicator extends PanelMenu.Button {
+    class LocalShareIndicator extends PanelMenuButton {
         _init() {
             super._init(0.0, 'LocalShare', false);
 
             this._mode = null;
             this._shareUrl = null;
-            this._sendDir = null;
             this._knownPendingIds = [];
             this._dynamicItems = [];
 
@@ -183,18 +172,18 @@ var LocalShareIndicator = GObject.registerClass(
             });
             this.add_child(icon);
 
-            this._header = new PopupMenu.PopupMenuItem('LocalShare', { reactive: false });
+            this._header = new PopupMenuItem('LocalShare', { reactive: false });
             this._header.label.add_style_class_name('localshare-header-label');
             this.menu.addMenuItem(this._header);
 
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            this.menu.addMenuItem(new PopupSeparatorMenuItem());
 
-            this._dynamicSection = new PopupMenu.PopupMenuSection();
+            this._dynamicSection = new PopupMenuSection();
             this.menu.addMenuItem(this._dynamicSection);
 
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            this.menu.addMenuItem(new PopupSeparatorMenuItem());
 
-            let settingsItem = new PopupMenu.PopupMenuItem('Settings');
+            let settingsItem = new PopupMenuItem('Settings');
             settingsItem.connect('activate', () => this._openSettings());
             this.menu.addMenuItem(settingsItem);
         }
@@ -209,29 +198,29 @@ var LocalShareIndicator = GObject.registerClass(
             this._dynamicItems = [];
 
             if (this._mode === 'sending') {
-                let stopItem = new PopupMenu.PopupMenuItem('Stop Sending');
+                let stopItem = new PopupMenuItem('Stop Sending');
                 stopItem.connect('activate', () => this._onStopSending());
                 this._addDynamicItem(stopItem);
 
-                let urlItem = new PopupMenu.PopupMenuItem(this._shareUrl || 'URL: unknown', {
+                let urlItem = new PopupMenuItem(this._shareUrl || 'URL: unknown', {
                     reactive: false
                 });
                 this._addDynamicItem(urlItem);
             } else if (this._mode === 'receiving') {
-                let stopItem = new PopupMenu.PopupMenuItem('Stop Receiving');
+                let stopItem = new PopupMenuItem('Stop Receiving');
                 stopItem.connect('activate', () => this._onStop());
                 this._addDynamicItem(stopItem);
 
-                let urlItem = new PopupMenu.PopupMenuItem(this._shareUrl || 'URL: unknown', {
+                let urlItem = new PopupMenuItem(this._shareUrl || 'URL: unknown', {
                     reactive: false
                 });
                 this._addDynamicItem(urlItem);
             } else {
-                let sendItem = new PopupMenu.PopupMenuItem('Send');
+                let sendItem = new PopupMenuItem('Send');
                 sendItem.connect('activate', () => this._onSend());
                 this._addDynamicItem(sendItem);
 
-                let recvItem = new PopupMenu.PopupMenuItem('Receive');
+                let recvItem = new PopupMenuItem('Receive');
                 recvItem.connect('activate', () => this._onReceive());
                 this._addDynamicItem(recvItem);
             }
@@ -260,7 +249,6 @@ var LocalShareIndicator = GObject.registerClass(
                 case 'sharing_stopped':
                     notify('Sharing Stopped', 'File sharing has been disabled');
                     this._mode = null;
-                    this._cleanupSendDir();
                     this._rebuildMenu();
                     break;
                 case 'upload_completed':
@@ -285,19 +273,6 @@ var LocalShareIndicator = GObject.registerClass(
                 (data.device || 'Unknown') + ' from ' + (data.ip || 'Unknown') + ' wants to connect'
             );
             this._refresh();
-        }
-
-        _cleanupSendDir() {
-            if (this._sendDir) {
-                try {
-                    let dir = Gio.File.new_for_path(this._sendDir);
-                    if (dir.query_exists(null))
-                        _deleteRecursively(dir);
-                } catch (e) {
-                    log('[LocalShare] Cleanup error: ' + e);
-                }
-                this._sendDir = null;
-            }
         }
 
         _buildStartPayload(sharedDir) {
@@ -359,6 +334,7 @@ var LocalShareIndicator = GObject.registerClass(
                 this._rebuildMenu();
                 this._refresh();
                 _startPolling();
+                wsEnabled = true;
                 _connectWS();
                 notify('LocalShare', 'Sharing started at ' + this._shareUrl);
             } catch (e) {
@@ -385,26 +361,12 @@ var LocalShareIndicator = GObject.registerClass(
                 if (!files || files.length === 0)
                     return;
 
-                let tmpBase = GLib.get_tmp_dir();
-                let sendDir = GLib.mkdtemp(tmpBase + '/localshare-send-XXXXXX');
+                await httpPost(_internalBase() + '/internal/start', this._buildStartPayload(null));
 
-                for (let i = 0; i < files.length; i++) {
-                    let file = files[i];
-                    let sourcePath = file.get_path();
-                    let linkName = file.get_basename();
-                    let linkPath = sendDir + '/' + linkName;
-
-                    try {
-                        let linkFile = Gio.File.new_for_path(linkPath);
-                        linkFile.make_symbolic_link(sourcePath, null);
-                    } catch (e) {
-                        log('[LocalShare] Symlink error for ' + linkName + ': ' + e);
-                    }
-                }
-
-                this._sendDir = sendDir;
-
-                await httpPost(_internalBase() + '/internal/start', this._buildStartPayload(sendDir));
+                let paths = [];
+                for (let i = 0; i < files.length; i++)
+                    paths.push(files[i].get_path());
+                await httpPut(_internalBase() + '/internal/send-files', { files: paths });
 
                 let status = await httpGet(_internalBase() + '/internal/status');
                 let ipsData = await httpGet(_internalBase() + '/internal/ips');
@@ -418,6 +380,7 @@ var LocalShareIndicator = GObject.registerClass(
                 this._rebuildMenu();
                 this._refresh();
                 _startPolling();
+                wsEnabled = true;
                 _connectWS();
             } catch (e) {
                 log('[LocalShare] Send error: ' + e);
@@ -426,7 +389,6 @@ var LocalShareIndicator = GObject.registerClass(
         }
 
         async _onStopSending() {
-            this._cleanupSendDir();
             try {
                 await httpPost(_internalBase() + '/internal/stop');
             } catch (e) {
@@ -450,7 +412,6 @@ var LocalShareIndicator = GObject.registerClass(
                 }
 
                 if (this._mode === 'sending') {
-                    this._cleanupSendDir();
                     await httpPost(_internalBase() + '/internal/stop');
                     this._mode = null;
                     this._knownPendingIds = [];
@@ -470,6 +431,7 @@ var LocalShareIndicator = GObject.registerClass(
                 this._rebuildMenu();
                 this._refresh();
                 _startPolling();
+                wsEnabled = true;
                 _connectWS();
             } catch (e) {
                 log('[LocalShare] Receive error: ' + e);
@@ -503,7 +465,6 @@ var LocalShareIndicator = GObject.registerClass(
                     this._mode = null;
                     this._knownPendingIds = [];
                     this._shareUrl = null;
-                    this._cleanupSendDir();
                     _stopPolling();
                     _disconnectWS();
                     this._rebuildMenu();
@@ -525,12 +486,15 @@ var LocalShareIndicator = GObject.registerClass(
 
                 this._rebuildMenu();
 
+                let pending = [];
+                let connected = [];
+
                 try {
                     let pendingData = await httpGet(_internalBase() + '/internal/pending');
-                    let pending = pendingData.pending || [];
+                    pending = pendingData.pending || [];
 
                     if (pending.length > 0) {
-                        this._addDynamicItem(new PopupMenu.PopupSeparatorMenuItem());
+                        this._addDynamicItem(new PopupSeparatorMenuItem());
                     }
 
                     pending.forEach(client => {
@@ -544,11 +508,11 @@ var LocalShareIndicator = GObject.registerClass(
 
                         let label = (client.device || 'Unknown') + ' (' + (client.ip || '') + ')';
 
-                        let approveItem = new PopupMenu.PopupMenuItem('\u2713 ' + label);
+                        let approveItem = new PopupMenuItem('\u2713 ' + label);
                         approveItem.connect('activate', () => this._approveClient(client.id));
                         this._addDynamicItem(approveItem);
 
-                        let rejectItem = new PopupMenu.PopupMenuItem('\u2717 ' + label);
+                        let rejectItem = new PopupMenuItem('\u2717 ' + label);
                         rejectItem.connect('activate', () => this._rejectClient(client.id));
                         this._addDynamicItem(rejectItem);
                     });
@@ -558,20 +522,27 @@ var LocalShareIndicator = GObject.registerClass(
 
                 try {
                     let clientsData = await httpGet(_internalBase() + '/internal/clients');
-                    let connected = clientsData.connected || [];
+                    connected = clientsData.connected || [];
 
                     if (connected.length > 0) {
-                        this._addDynamicItem(new PopupMenu.PopupSeparatorMenuItem());
+                        this._addDynamicItem(new PopupSeparatorMenuItem());
                     }
 
                     connected.forEach(client => {
                         let label = (client.device || 'Unknown') + ' (' + (client.ip || '') + ')';
-                        let item = new PopupMenu.PopupMenuItem('  ' + label, { reactive: false });
+                        let item = new PopupMenuItem('  ' + label, { reactive: false });
                         this._addDynamicItem(item);
                     });
                 } catch (e) {
                     log('[LocalShare] Clients error: ' + e);
                 }
+
+                let activeIds = new Set();
+                for (let client of pending)
+                    activeIds.add(client.id);
+                for (let client of connected)
+                    activeIds.add(client.id);
+                this._knownPendingIds = this._knownPendingIds.filter(id => activeIds.has(id));
             } catch (e) {
                 log('[LocalShare] Refresh error: ' + e);
             }
@@ -597,7 +568,8 @@ var LocalShareIndicator = GObject.registerClass(
 
         _openSettings() {
             try {
-                Main.openExtensionPrefs(_extension.uuid);
+                if (_extension)
+                    _extension.openPreferences();
             } catch (e) {
                 log('[LocalShare] Open prefs error: ' + e);
             }

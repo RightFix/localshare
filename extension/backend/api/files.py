@@ -72,7 +72,9 @@ async def api_upload(
 
         upload_path = config.upload_dir / safe_name
         if upload_path.exists():
-            base, ext = safe_name.rsplit(".", 1) if "." in safe_name else (safe_name, "")
+            base, ext = (
+                safe_name.rsplit(".", 1) if "." in safe_name else (safe_name, "")
+            )
             counter = 1
             while upload_path.exists():
                 if ext:
@@ -97,12 +99,35 @@ async def api_list_files(
     request: Request,
     path: str = "",
 ):
-    """List files in the shared directory."""
+    """List files in the shared directory (or the Send-mode whitelist)."""
     storage = request.app.state.storage_manager
 
     session_id = await validate_session(request, storage)
     if not session_id:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    server_manager = request.app.state.server_manager
+    send_files = server_manager.get_send_files()
+
+    if send_files:
+        if path:
+            return JSONResponse({"error": "Invalid path"}, status_code=400)
+        files = []
+        for name, real in send_files.items():
+            try:
+                st = real.stat()
+            except OSError:
+                continue
+            files.append(
+                {
+                    "name": name,
+                    "path": name,
+                    "size": st.st_size,
+                    "modified": st.st_mtime,
+                    "isDirectory": False,
+                }
+            )
+        return files
 
     config = await storage.get_config()
     shared_dir = config.shared_dir
@@ -148,12 +173,29 @@ async def api_download_file(
     filepath: str,
     request: Request,
 ):
-    """Download a file from the shared directory."""
+    """Download a file from the shared directory (or the Send-mode whitelist)."""
     storage = request.app.state.storage_manager
+    server_manager = request.app.state.server_manager
 
     session_id = await validate_session(request, storage)
     if not session_id:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    # Send-mode whitelist: a single-segment name matching a registered file.
+    if "/" not in filepath:
+        send_files = server_manager.get_send_files()
+        real = send_files.get(filepath)
+        if real is not None:
+            resolved = real.resolve()
+            if resolved.is_file():
+                sessions = await storage.get_sessions()
+                session = sessions.get(session_id)
+                await server_manager.notify_download(
+                    resolved.name,
+                    resolved.stat().st_size,
+                    session.device if session else "Unknown",
+                )
+                return FileResponse(resolved, filename=resolved.name)
 
     config = await storage.get_config()
     shared_dir = config.shared_dir
@@ -174,7 +216,6 @@ async def api_download_file(
     if not file_path.is_file():
         return JSONResponse({"error": "File not found"}, status_code=404)
 
-    server_manager = request.app.state.server_manager
     sessions = await storage.get_sessions()
     session = sessions.get(session_id)
     await server_manager.notify_download(
