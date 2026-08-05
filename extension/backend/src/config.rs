@@ -129,11 +129,11 @@ impl Config {
 
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errs = Vec::new();
-        if !(1024..=65535).contains(&self.port) {
-            errs.push("port must be in range 1024-65535".into());
+        if !(1000..=10000).contains(&self.port) {
+            errs.push("port must be in range 1000-10000".into());
         }
-        if !(1024..=65535).contains(&self.internal_port) {
-            errs.push("internal_port must be in range 1024-65535".into());
+        if !(1000..=10000).contains(&self.internal_port) {
+            errs.push("internal_port must be in range 1000-10000".into());
         }
         if errs.is_empty() {
             Ok(())

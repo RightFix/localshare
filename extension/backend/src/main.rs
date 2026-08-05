@@ -40,7 +40,13 @@ async fn main() {
         match arg.as_str() {
             "--internal-port" => {
                 if let Some(v) = args.next() {
-                    internal_port = v.parse().unwrap_or(8765);
+                    match v.parse::<u16>() {
+                        Ok(p) if (1000..=10000).contains(&p) => internal_port = p,
+                        _ => {
+                            eprintln!("Invalid --internal-port '{v}': must be in range 1000-10000");
+                            std::process::exit(1);
+                        }
+                    }
                 }
             }
             "--data-dir" => {
