@@ -57,15 +57,15 @@ instantly through the event bus.
 
 ## Building the backend
 
-The Rust backend lives in `extension/backend-rust/`. To rebuild the binary:
+The Rust backend lives in `extension/backend/`. To rebuild the binary:
 
 ```bash
-cd extension/backend-rust
+cd extension/backend
 cargo build --release
 ```
 
-The release binary is written to `extension/backend-rust/target/release/localshare-backend`.
-Copy it to `extension/backend-rust/localshare-backend` before packaging the zip (see below).
+The release binary is written to `extension/backend/target/release/localshare-backend`.
+Copy it to `extension/backend/localshare-backend` before packaging the zip (see below).
 
 ## Install
 
@@ -82,9 +82,9 @@ Restart GNOME Shell (Alt+F2, type `r`, Enter) and enable the extension.
 Build the binary first (see above), then package:
 
 ```bash
-cp extension/backend-rust/target/release/localshare-backend extension/backend-rust/localshare-backend
+cp extension/backend/target/release/localshare-backend extension/backend/localshare-backend
 rm -f localshare@rightfix.com.zip
-cd extension && zip -r ../localshare@rightfix.com.zip . -x 'backend-rust/target/*' 'backend-rust/Cargo.lock' && cd ..
+cd extension && zip -r ../localshare@rightfix.com.zip . -x 'backend/target/*' 'backend/Cargo.lock' && cd ..
 ```
 
 The binary is prebuilt per-architecture, so rebuild it on each target architecture before uploading.

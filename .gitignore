@@ -7,7 +7,7 @@ wheels/
 *.egg-info
 
 # Rust build output
-extension/backend-rust/target/
+extension/backend/target/
 target/
 
 # Virtual environments

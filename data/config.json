@@ -1,0 +1,11 @@
+{
+  "upload_dir": "/home/righteousness/Downloads",
+  "shared_dir": "/home/righteousness/Public/LocalShare",
+  "port": 8080,
+  "internal_port": 8765,
+  "sharing_enabled": false,
+  "server_secret": "51f36513-771e-4fcc-a7d9-2a72211143da",
+  "auto_start": false,
+  "notify_on_upload": true,
+  "notify_on_download": true
+}

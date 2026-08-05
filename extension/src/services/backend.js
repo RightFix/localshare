@@ -5,7 +5,7 @@
  * when the user clicks "Send" or "Receive".
  *
  * The backend ships as a prebuilt, self-contained binary inside the
- * extension directory (backend-rust/localshare-backend), so no Python,
+ * extension directory (backend/localshare-backend), so no Python,
  * venv, or package installation is ever required at runtime. Runtime
  * JSON data lives under $XDG_DATA_HOME/localshare.
  */
@@ -38,7 +38,7 @@ export function init(extensionDir, settings) {
 }
 
 function _getBackendBinary() {
-    return _extensionDir + '/backend-rust/localshare-backend';
+    return _extensionDir + '/backend/localshare-backend';
 }
 
 function _notify(title, body) {
