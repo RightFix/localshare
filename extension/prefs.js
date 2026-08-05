@@ -79,8 +79,8 @@ export default class LocalSharePreferences extends ExtensionPreferences {
         let row = new Adw.SpinRow({
             title: _(title),
             adjustment: new Gtk.Adjustment({
-                lower: 1024,
-                upper: 65535,
+                lower: 1000,
+                upper: 10000,
                 step_increment: 1,
                 value: settings.get_int(key)
             })

@@ -18,22 +18,24 @@
       <description>Show a notification when a file is downloaded.</description>
     </key>
     <key name="upload-dir" type="s">
-      <default>''</default>
+      <default>'~/Public'</default>
       <summary>Upload directory</summary>
       <description>Directory where uploaded files are stored.</description>
     </key>
     <key name="shared-dir" type="s">
-      <default>''</default>
+      <default>'~/Public'</default>
       <summary>Shared directory</summary>
       <description>Directory that visitors can browse and download.</description>
     </key>
     <key name="port" type="i">
       <default>8080</default>
+      <range min="1000" max="10000"/>
       <summary>Browser port</summary>
       <description>Port number for the browser web server.</description>
     </key>
     <key name="internal-port" type="i">
       <default>8765</default>
+      <range min="1000" max="10000"/>
       <summary>Internal API port</summary>
       <description>Port number for the internal backend API.</description>
     </key>

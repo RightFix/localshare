@@ -23,11 +23,11 @@ pub fn home_dir() -> PathBuf {
 }
 
 fn default_upload_dir() -> PathBuf {
-    home_dir().join("Downloads")
+    home_dir().join("Public")
 }
 
 fn default_shared_dir() -> PathBuf {
-    home_dir().join("Public").join("LocalShare")
+    home_dir().join("Public")
 }
 
 fn default_server_secret() -> String {
