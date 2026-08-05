@@ -32,7 +32,7 @@ instantly through the event bus.
 **File transfer**
 
 - Uploads are streamed straight to disk in chunks into the folder you picked, with no size limits.
-- Downloads are served directly from disk, with symlink escape attempts blocked.
+- Downloads are served directly from disk, with path traversal and symlink escape attempts blocked.
 - Progress and completions arrive as desktop notifications (`upload_completed`, `download_completed`).
 - State (config, pending clients, sessions, activity) is persisted as JSON files with atomic writes,
   so a restart loses nothing important.
@@ -43,6 +43,15 @@ instantly through the event bus.
 2. Choose **Send** or **Receive**.
 3. Other devices open the shown URL in their browser.
 4. Approve or reject connection requests from the menu.
+
+**Send vs Receive**
+
+- **Receive** — shares a folder on your machine. Visitors can browse and download anything in it,
+  and upload files into it.
+- **Send** — pick specific files (e.g. a PDF you want to hand over). The extension registers those
+  exact files with the backend over the loopback API, and visitors can only see and download those
+  files — nothing else on your disk. No temporary copies or symlinks are involved, so your data is
+  never duplicated.
 
 ## Requirements
 
