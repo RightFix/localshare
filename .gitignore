@@ -8,7 +8,7 @@ wheels/
 
 # Rust build output
 extension/backend-rust/target/
-extension/backend-rust/localshare-backend
+target/
 
 # Virtual environments
 .venv
