@@ -25,9 +25,9 @@ function httpRequest(method, url, body) {
             msg.set_request_body_from_bytes('application/json', gbytes);
         }
 
-        session.send_async(msg, null, (session_, result) => {
+        session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (session_, result) => {
             try {
-                let bytes = session_.send_finish(result);
+                let bytes = session_.send_and_read_finish(result);
                 if (msg.status_code !== 200) {
                     reject(new Error('HTTP ' + msg.status_code));
                     return;

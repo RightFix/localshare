@@ -25,6 +25,7 @@ let _dataDir = null;
 let _internalPort = 8765;
 
 let _backendProcess = null;
+let _processExited = false;
 let _starting = false;
 
 function _internalBase() {
@@ -58,12 +59,7 @@ function _ensureDataDir() {
 }
 
 function _isProcessRunning() {
-    if (!_backendProcess) return false;
-    try {
-        return _backendProcess.get_if_running();
-    } catch (e) {
-        return false;
-    }
+    return _backendProcess !== null && !_processExited;
 }
 
 async function _checkServer() {
@@ -97,10 +93,21 @@ function _spawnBackend() {
     log('[LocalShare Backend] Spawning: ' + args.join(' '));
 
     try {
-        _backendProcess = Gio.Subprocess.new(
+        let proc = Gio.Subprocess.new(
             args,
             Gio.SubprocessFlags.NONE
         );
+        _backendProcess = proc;
+        _processExited = false;
+        proc.wait_async(null, (p, result) => {
+            try {
+                p.wait_finish(result);
+            } catch (e) {
+                log('[LocalShare Backend] Wait error: ' + e);
+            }
+            if (p === _backendProcess)
+                _processExited = true;
+        });
         return true;
     } catch (e) {
         log('[LocalShare Backend] Spawn error: ' + e);
@@ -130,18 +137,10 @@ function _killBackend() {
     });
 
     GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
-        let running = false;
         try {
-            running = proc.get_if_running();
+            proc.force_exit();
         } catch (e) {
-            log('[LocalShare Backend] Process state error: ' + e);
-        }
-        if (running) {
-            try {
-                proc.force_exit();
-            } catch (e) {
-                log('[LocalShare Backend] Force exit error: ' + e);
-            }
+            log('[LocalShare Backend] Force exit error: ' + e);
         }
         return GLib.SOURCE_REMOVE;
     });
