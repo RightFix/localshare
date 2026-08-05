@@ -84,7 +84,9 @@ Build the binary first (see above), then package:
 ```bash
 cp extension/backend/target/release/localshare-backend extension/backend/localshare-backend
 rm -f localshare@rightfix.com.zip
-cd extension && zip -r ../localshare@rightfix.com.zip . -x 'backend/target/*' 'backend/Cargo.lock' && cd ..
+cd extension && zip -r ../localshare@rightfix.com.zip . \
+    -x 'backend/target/*' 'backend/Cargo.lock' 'backend/Cargo.toml' \
+       'backend/src/*' 'backend/assets/*' && cd ..
 ```
 
 The binary is prebuilt per-architecture, so rebuild it on each target architecture before uploading.
