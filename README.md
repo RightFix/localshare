@@ -65,12 +65,24 @@ Web frontend: no libraries — plain HTML/CSS/JS.
 1. Click the LocalShare icon in the top panel.
 2. Choose **Send** or **Receive**.
 3. Other devices open the shown URL in their browser.
-4. Approve or reject connection requests from the menu.
+4. A persistent notification appears on your screen — click **Accept** or **Decline** to allow or
+   block the connection.
+
+**Where files go (default: your `Public` directory)**
+
+- By default both uploads and downloads use `~/Public` on your machine:
+  - **Uploads** (files visitors send to you) are saved into `~/Public`.
+  - **Downloads** (files visitors fetch from you) are served from `~/Public`.
+- You can change these locations at any time in the extension's **Settings** window
+  (click **Settings** in the panel menu). The **Upload Directory** and **Shared Directory**
+  pickers let you point them anywhere you like.
+- Use the **Browse Shared Files** button in the web UI to confirm which files are currently
+  visible, or drop files onto the page to upload them into your upload directory.
 
 **Send vs Receive**
 
-- **Receive** — shares a folder on your machine. Visitors can browse and download anything in it,
-  and upload files into it.
+- **Receive** — shares a folder on your machine (default `~/Public`). Visitors can browse and
+  download anything in it, and upload files into it.
 - **Send** — pick specific files (e.g. a PDF you want to hand over). The extension registers those
   exact files with the backend over the loopback API, and visitors can only see and download those
   files — nothing else on your disk. No temporary copies or symlinks are involved, so your data is
