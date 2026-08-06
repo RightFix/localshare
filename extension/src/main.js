@@ -6,6 +6,7 @@ import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Soup from 'gi://Soup';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import { Button as PanelMenuButton } from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import {
     PopupMenuItem,
@@ -164,6 +165,7 @@ let LocalShareIndicator = GObject.registerClass(
             this._mode = null;
             this._shareUrl = null;
             this._knownPendingIds = [];
+            this._pendingNotifications = {};
             this._dynamicItems = [];
 
             let icon = new St.Icon({
@@ -246,9 +248,12 @@ let LocalShareIndicator = GObject.registerClass(
                 case 'client_approved':
                 case 'client_rejected':
                 case 'client_disconnected':
+                    if (data.client_id)
+                        this._removePendingNotification(data.client_id);
                     this._refresh();
                     break;
                 case 'sharing_stopped':
+                    this._clearPendingNotifications();
                     notify('Sharing Stopped', 'File sharing has been disabled');
                     this._mode = null;
                     this._rebuildMenu();
@@ -266,14 +271,60 @@ let LocalShareIndicator = GObject.registerClass(
             }
         }
 
+        _removePendingNotification(clientId) {
+            let notification = this._pendingNotifications[clientId];
+            if (!notification)
+                return;
+            try {
+                notification.destroy();
+            } catch (e) {
+                log('[LocalShare] Notification destroy error: ' + e);
+            }
+            delete this._pendingNotifications[clientId];
+        }
+
+        _clearPendingNotifications() {
+            for (let clientId of Object.keys(this._pendingNotifications)) {
+                try {
+                    this._pendingNotifications[clientId].destroy();
+                } catch (e) {
+                    log('[LocalShare] Notification destroy error: ' + e);
+                }
+            }
+            this._pendingNotifications = {};
+        }
+
         _addPendingClient(data) {
             if (this._knownPendingIds.indexOf(data.client_id) !== -1)
                 return;
             this._knownPendingIds.push(data.client_id);
-            notify(
-                'Connection Request',
-                (data.device || 'Unknown') + ' from ' + (data.ip || 'Unknown') + ' wants to connect'
-            );
+
+            try {
+                let body = (data.device || 'Unknown') + ' from ' + (data.ip || 'Unknown') + ' wants to connect';
+                let notification = new MessageTray.Notification({
+                    source: MessageTray.getSystemSource(),
+                    title: 'Connection Request',
+                    body: body,
+                    isTransient: false,
+                    resident: true,
+                    urgency: MessageTray.Urgency.CRITICAL
+                });
+
+                notification.addAction('Accept', () => {
+                    this._removePendingNotification(data.client_id);
+                    this._approveClient(data.client_id);
+                });
+
+                notification.addAction('Decline', () => {
+                    this._removePendingNotification(data.client_id);
+                    this._rejectClient(data.client_id);
+                });
+
+                this._pendingNotifications[data.client_id] = notification;
+                MessageTray.getSystemSource().addNotification(notification);
+            } catch (e) {
+                log('[LocalShare] Notification error: ' + e);
+            }
             this._refresh();
         }
 
@@ -408,6 +459,7 @@ let LocalShareIndicator = GObject.registerClass(
                     await httpPost(_internalBase() + '/internal/stop');
                     this._mode = null;
                     this._knownPendingIds = [];
+                    this._clearPendingNotifications();
                 }
 
                 let files = await this._pickFiles();
@@ -449,6 +501,7 @@ let LocalShareIndicator = GObject.registerClass(
             }
             this._mode = null;
             this._knownPendingIds = [];
+            this._clearPendingNotifications();
             this._shareUrl = null;
             _stopPolling();
             _disconnectWS();
@@ -468,6 +521,7 @@ let LocalShareIndicator = GObject.registerClass(
                     await httpPost(_internalBase() + '/internal/stop');
                     this._mode = null;
                     this._knownPendingIds = [];
+                    this._clearPendingNotifications();
                 }
 
                 await httpPost(_internalBase() + '/internal/start', this._buildStartPayload(null));
@@ -500,6 +554,7 @@ let LocalShareIndicator = GObject.registerClass(
             }
             this._mode = null;
             this._knownPendingIds = [];
+            this._clearPendingNotifications();
             this._shareUrl = null;
             _stopPolling();
             _disconnectWS();
@@ -517,6 +572,7 @@ let LocalShareIndicator = GObject.registerClass(
                 if (!status.sharing_enabled) {
                     this._mode = null;
                     this._knownPendingIds = [];
+                    this._clearPendingNotifications();
                     this._shareUrl = null;
                     _stopPolling();
                     _disconnectWS();
@@ -552,11 +608,11 @@ let LocalShareIndicator = GObject.registerClass(
 
                     pending.forEach(client => {
                         if (this._knownPendingIds.indexOf(client.id) === -1) {
-                            this._knownPendingIds.push(client.id);
-                            notify(
-                                'Connection Request',
-                                (client.device || 'Unknown') + ' from ' + (client.ip || '') + ' wants to connect'
-                            );
+                            this._addPendingClient({
+                                client_id: client.id,
+                                device: client.device,
+                                ip: client.ip
+                            });
                         }
 
                         let label = (client.device || 'Unknown') + ' (' + (client.ip || '') + ')';
@@ -596,6 +652,10 @@ let LocalShareIndicator = GObject.registerClass(
                 for (let client of connected)
                     activeIds.add(client.id);
                 this._knownPendingIds = this._knownPendingIds.filter(id => activeIds.has(id));
+                for (let clientId of Object.keys(this._pendingNotifications)) {
+                    if (!activeIds.has(clientId))
+                        this._removePendingNotification(clientId);
+                }
             } catch (e) {
                 log('[LocalShare] Refresh error: ' + e);
             }

@@ -51,10 +51,36 @@ async function checkStatus() {
     }
 }
 
+function deriveDeviceName(userAgent) {
+    let browser = 'Browser';
+    if (/Edg\//.test(userAgent)) browser = 'Edge';
+    else if (/OPR\//.test(userAgent)) browser = 'Opera';
+    else if (/Firefox\//.test(userAgent)) browser = 'Firefox';
+    else if (/Chrome\//.test(userAgent)) browser = 'Chrome';
+    else if (/Safari\//.test(userAgent)) browser = 'Safari';
+
+    let os = 'Unknown OS';
+    if (/Windows NT 10/.test(userAgent)) os = 'Windows 10/11';
+    else if (/Windows NT 6\.1/.test(userAgent)) os = 'Windows 7';
+    else if (/Android/.test(userAgent)) os = 'Android';
+    else if (/iPhone|iPad/.test(userAgent)) os = 'iOS';
+    else if (/Mac OS X/.test(userAgent)) os = 'macOS';
+    else if (/Linux/.test(userAgent)) os = 'Linux';
+
+    return `${browser} on ${os}`;
+}
+
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${protocol}//${window.location.host}/ws/client`);
-    ws.onopen = () => console.log('WS connected');
+    ws.onopen = () => {
+        console.log('WS connected');
+        ws.send(JSON.stringify({
+            device: deriveDeviceName(navigator.userAgent),
+            ip: '',
+            user_agent: navigator.userAgent
+        }));
+    };
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.action === 'approved') {
