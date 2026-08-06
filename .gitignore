@@ -22,13 +22,9 @@ data/
 extension/schemas/gschemas.compiled
 
 # Project-local files
-BACKEND_BUGS.txt
-front_end_bug.txt
+logs/
 uv.lock
 pyproject.toml
-to_rust.txt
-test_log.txt
-issue_log.txt
 
 # OS files
 .DS_Store
