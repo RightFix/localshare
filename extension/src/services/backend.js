@@ -155,7 +155,7 @@ function _delay(ms) {
     });
 }
 
-export var ensureBackend = async function () {
+export let ensureBackend = async function () {
     if (_starting) {
         log('[LocalShare Backend] Already starting, waiting...');
         for (let i = 0; i < MAX_RETRIES; i++) {
@@ -203,7 +203,7 @@ export var ensureBackend = async function () {
     return false;
 };
 
-export var stopBackend = function () {
+export let stopBackend = function () {
     _starting = false;
     if (_backendProcess) {
         log('[LocalShare Backend] Stopping...');
@@ -211,6 +211,6 @@ export var stopBackend = function () {
     }
 };
 
-export var isBackendRunning = function () {
+export let isBackendRunning = function () {
     return _isProcessRunning();
 };

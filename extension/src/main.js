@@ -5,7 +5,6 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Soup from 'gi://Soup';
-import Gtk from 'gi://Gtk?version=4.0';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { Button as PanelMenuButton } from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import {
@@ -157,7 +156,7 @@ function _disconnectWS() {
     }
 }
 
-var LocalShareIndicator = GObject.registerClass(
+let LocalShareIndicator = GObject.registerClass(
     class LocalShareIndicator extends PanelMenuButton {
         _init() {
             super._init(0.0, 'LocalShare', false);
@@ -293,27 +292,78 @@ var LocalShareIndicator = GObject.registerClass(
 
         _pickFiles() {
             return new Promise(resolve => {
-                let chooser = new Gtk.FileChooserNative({
-                    title: 'Select files to send',
-                    action: Gtk.FileChooserAction.OPEN,
-                    select_multiple: true,
-                    modal: true
-                });
+                let resolved = false;
+                let unsubId = 0;
 
-                chooser.connect('response', (widget, response) => {
-                    if (response === Gtk.ResponseType.ACCEPT) {
-                        let files = [];
-                        let model = chooser.get_files();
-                        for (let i = 0; i < model.get_n_items(); i++)
-                            files.push(model.get_item(i));
-                        resolve(files);
-                    } else {
-                        resolve(null);
-                    }
-                    chooser.destroy();
-                });
+                const finish = files => {
+                    if (resolved)
+                        return;
+                    resolved = true;
+                    if (unsubId)
+                        Gio.DBus.session.signal_unsubscribe(unsubId);
+                    resolve(files);
+                };
 
-                chooser.show();
+                try {
+                    Gio.DBus.session.call(
+                        'org.freedesktop.portal.Desktop',
+                        '/org/freedesktop/portal/desktop',
+                        'org.freedesktop.portal.FileChooser',
+                        'OpenFile',
+                        new GLib.Variant('(ssa{sv})', ['', 'Select files to send', {
+                            multiple: new GLib.Variant('b', true),
+                            modal: new GLib.Variant('b', true)
+                        }]),
+                        GLib.VariantType.new('(o)'),
+                        Gio.DBusCallFlags.NONE,
+                        -1,
+                        null,
+                        (conn, result) => {
+                            try {
+                                let ret = conn.call_finish(result);
+                                let handle = ret.get_child_value(0).unpack();
+
+                                unsubId = conn.signal_subscribe(
+                                    'org.freedesktop.portal.Desktop',
+                                    'org.freedesktop.portal.Request',
+                                    'Response',
+                                    handle,
+                                    null,
+                                    Gio.DBusSignalFlags.NONE,
+                                    (c, sender, path, iface, signal, params) => {
+                                        try {
+                                            let response = params.get_child_value(0).unpack();
+                                            if (response !== 0) {
+                                                finish(null);
+                                                return;
+                                            }
+                                            let results = params.get_child_value(1);
+                                            let urisVar = results.lookup_value('uris', null);
+                                            if (!urisVar) {
+                                                finish(null);
+                                                return;
+                                            }
+                                            let uris = urisVar.deep_unpack();
+                                            let files = [];
+                                            for (let i = 0; i < uris.length; i++)
+                                                files.push(Gio.File.new_for_uri(uris[i]));
+                                            finish(files);
+                                        } catch (e) {
+                                            log('[LocalShare] Portal response error: ' + e);
+                                            finish(null);
+                                        }
+                                    }
+                                );
+                            } catch (e) {
+                                log('[LocalShare] Portal open error: ' + e);
+                                finish(null);
+                            }
+                        }
+                    );
+                } catch (e) {
+                    log('[LocalShare] Portal error: ' + e);
+                    finish(null);
+                }
             });
         }
 
