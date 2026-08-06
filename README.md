@@ -22,10 +22,35 @@ instantly through the event bus.
 
 **Connection flow**
 
-1. A device opens the shown URL, and its browser connects to the client websocket.
-2. The extension shows a notification asking you to approve or reject the device.
+1. A device opens the shown URL, and its browser connects to the client websocket, announcing
+   itself with a device name derived from its browser user agent (e.g. "Firefox on Linux").
+2. The extension shows an interactive notification with **Accept / Decline** buttons. The
+   notification is persistent (it stays in the notification center) until you respond, so it
+   won't be missed even if you step away.
 3. On approval, a session token is created and pushed back through the event bus to the browser.
 4. The browser is now authenticated and can upload or download files.
+
+**Libraries**
+
+Backend (Rust crates):
+
+- axum 0.8 — HTTP/WebSocket web framework
+- tokio 1 — async runtime
+- serde 1 / serde_json 1 — serialization
+- uuid 1 (v4) — session and client IDs
+- chrono 0.4 — timestamps
+- rust-embed 8 — embeds the web UI into the binary
+- local-ip-address 0.6 — LAN IP detection
+- tokio-util 0.7 — streaming helpers
+- futures-util 0.3 — async utilities
+
+Extension (GJS / GNOME Shell APIs):
+
+- Gio, GLib, GObject, St, Soup
+- Adw + Gtk 4.0 (preferences window)
+- GNOME Shell modules: ui/main, ui/messageTray, ui/panelMenu, ui/popupMenu
+
+Web frontend: no libraries — plain HTML/CSS/JS.
 
 **File transfer**
 
