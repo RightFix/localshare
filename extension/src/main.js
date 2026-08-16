@@ -26,6 +26,8 @@ let pollTimer = null;
 let wsConnection = null;
 let wsReconnectId = null;
 let wsEnabled = false;
+let wsMessageId = 0;
+let wsClosedId = 0;
 
 function _internalBase() {
     return 'http://127.0.0.1:' + _settings.get_int('internal-port');
@@ -60,6 +62,14 @@ export function disable() {
     _stopPolling();
     _disconnectWS();
     if (indicator) {
+        for (let s of indicator._staticSignals) {
+            try {
+                s.obj.disconnect(s.id);
+            } catch (e) {
+                log('[LocalShare] Signal disconnect error: ' + e);
+            }
+        }
+        indicator._staticSignals = [];
         indicator._mode = null;
     }
     stopBackend();
@@ -102,7 +112,15 @@ function _connectWS() {
                 wsConnection = session_.websocket_connect_finish(result);
                 log('[LocalShare] WS connected');
 
-                wsConnection.connect('message', (conn, type, data) => {
+                if (!wsEnabled) {
+                    try {
+                        wsConnection.close(1000, 'disabled');
+                    } catch (e) {}
+                    wsConnection = null;
+                    return;
+                }
+
+                wsMessageId = wsConnection.connect('message', (conn, type, data) => {
                     try {
                         let text = new TextDecoder().decode(data.get_data());
                         let msg = JSON.parse(text);
@@ -113,7 +131,7 @@ function _connectWS() {
                     }
                 });
 
-                wsConnection.connect('closed', () => {
+                wsClosedId = wsConnection.connect('closed', () => {
                     log('[LocalShare] WS closed');
                     wsConnection = null;
                     if (wsEnabled)
@@ -148,6 +166,22 @@ function _disconnectWS() {
         wsReconnectId = null;
     }
     if (wsConnection) {
+        if (wsMessageId) {
+            try {
+                wsConnection.disconnect(wsMessageId);
+            } catch (e) {
+                log('[LocalShare] WS message disconnect error: ' + e);
+            }
+            wsMessageId = 0;
+        }
+        if (wsClosedId) {
+            try {
+                wsConnection.disconnect(wsClosedId);
+            } catch (e) {
+                log('[LocalShare] WS closed disconnect error: ' + e);
+            }
+            wsClosedId = 0;
+        }
         try {
             wsConnection.close(1000, 'Extension disabled');
         } catch (e) {
@@ -167,6 +201,8 @@ let LocalShareIndicator = GObject.registerClass(
             this._knownPendingIds = [];
             this._pendingNotifications = {};
             this._dynamicItems = [];
+            this._dynamicSignals = [];
+            this._staticSignals = [];
 
             let icon = new St.Icon({
                 icon_name: 'network-server-symbolic',
@@ -186,7 +222,7 @@ let LocalShareIndicator = GObject.registerClass(
             this.menu.addMenuItem(new PopupSeparatorMenuItem());
 
             let settingsItem = new PopupMenuItem('Settings');
-            settingsItem.connect('activate', () => this._openSettings());
+            this._connectActivate(settingsItem, () => this._openSettings(), false);
             this.menu.addMenuItem(settingsItem);
 
             this._rebuildMenu();
@@ -197,13 +233,19 @@ let LocalShareIndicator = GObject.registerClass(
             this._dynamicItems.push(item);
         }
 
+        _connectActivate(item, callback, dynamic = true) {
+            let id = item.connect('activate', callback);
+            (dynamic ? this._dynamicSignals : this._staticSignals).push({ obj: item, id });
+            return id;
+        }
+
         _rebuildMenu() {
             this._clearSection();
             this._dynamicItems = [];
 
             if (this._mode === 'sending') {
                 let stopItem = new PopupMenuItem('Stop Sending');
-                stopItem.connect('activate', () => this._onStopSending());
+                this._connectActivate(stopItem, () => this._onStopSending());
                 this._addDynamicItem(stopItem);
 
                 let urlItem = new PopupMenuItem(this._shareUrl || 'URL: unknown', {
@@ -212,7 +254,7 @@ let LocalShareIndicator = GObject.registerClass(
                 this._addDynamicItem(urlItem);
             } else if (this._mode === 'receiving') {
                 let stopItem = new PopupMenuItem('Stop Receiving');
-                stopItem.connect('activate', () => this._onStop());
+                this._connectActivate(stopItem, () => this._onStop());
                 this._addDynamicItem(stopItem);
 
                 let urlItem = new PopupMenuItem(this._shareUrl || 'URL: unknown', {
@@ -221,16 +263,24 @@ let LocalShareIndicator = GObject.registerClass(
                 this._addDynamicItem(urlItem);
             } else {
                 let sendItem = new PopupMenuItem('Send');
-                sendItem.connect('activate', () => this._onSend());
+                this._connectActivate(sendItem, () => this._onSend());
                 this._addDynamicItem(sendItem);
 
                 let recvItem = new PopupMenuItem('Receive');
-                recvItem.connect('activate', () => this._onReceive());
+                this._connectActivate(recvItem, () => this._onReceive());
                 this._addDynamicItem(recvItem);
             }
         }
 
         _clearSection() {
+            for (let s of this._dynamicSignals) {
+                try {
+                    s.obj.disconnect(s.id);
+                } catch (e) {
+                    log('[LocalShare] Signal disconnect error: ' + e);
+                }
+            }
+            this._dynamicSignals = [];
             for (let i = this._dynamicItems.length - 1; i >= 0; i--) {
                 this._dynamicItems[i].destroy();
             }
@@ -618,11 +668,11 @@ let LocalShareIndicator = GObject.registerClass(
                         let label = (client.device || 'Unknown') + ' (' + (client.ip || '') + ')';
 
                         let approveItem = new PopupMenuItem('\u2713 ' + label);
-                        approveItem.connect('activate', () => this._approveClient(client.id));
+                        this._connectActivate(approveItem, () => this._approveClient(client.id));
                         this._addDynamicItem(approveItem);
 
                         let rejectItem = new PopupMenuItem('\u2717 ' + label);
-                        rejectItem.connect('activate', () => this._rejectClient(client.id));
+                        this._connectActivate(rejectItem, () => this._rejectClient(client.id));
                         this._addDynamicItem(rejectItem);
                     });
                 } catch (e) {

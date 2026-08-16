@@ -123,7 +123,7 @@ cp extension/backend/target/release/localshare-backend extension/backend/localsh
 rm -f localshare@rightfix.com.zip
 cd extension && zip -r ../localshare@rightfix.com.zip . \
     -x 'backend/target/*' 'backend/Cargo.lock' 'backend/Cargo.toml' \
-       'backend/src/*' 'backend/assets/*' && cd ..
+       'backend/src/*' 'backend/assets/*' 'schemas/gschemas.compiled' 'venv/*' 'venv' && cd ..
 ```
 
 The binary is prebuilt per-architecture, so rebuild it on each target architecture before uploading.
