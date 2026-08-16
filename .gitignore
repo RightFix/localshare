@@ -19,7 +19,6 @@ upload/
 extension/backend/data/
 extension/data/
 data/
-extension/schemas/gschemas.compiled
 
 # Project-local files
 logs/
