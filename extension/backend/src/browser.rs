@@ -6,7 +6,7 @@ use std::time::UNIX_EPOCH;
 
 use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{ConnectInfo, Multipart, Path, Query, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Multipart, Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -36,6 +36,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/app.js", get(app_js))
         .route("/api/status", get(api_status))
         .route("/api/upload", post(api_upload))
+        .layer(DefaultBodyLimit::disable())
         .route("/api/files", get(api_list_files))
         .route("/api/files/{*filepath}", get(api_download_file))
         .route("/ws/client", get(ws_client))
@@ -170,18 +171,33 @@ async fn api_upload(
             }
         };
         let mut size: u64 = 0;
+        let mut write_failed = false;
         while let Some(chunk) = field.chunk().await.transpose() {
             match chunk {
                 Ok(bytes) => {
                     size += bytes.len() as u64;
                     if file.write_all(&bytes).await.is_err() {
+                        write_failed = true;
                         break;
                     }
                 }
-                Err(_) => break,
+                Err(_) => {
+                    write_failed = true;
+                    break;
+                }
             }
         }
         let _ = file.flush().await;
+        drop(file);
+
+        if write_failed {
+            let _ = tokio::fs::remove_file(&target).await;
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Upload failed: write error or connection interrupted" })),
+            )
+                .into_response();
+        }
 
         let sessions = state.storage.get_sessions().await;
         let device = sessions
