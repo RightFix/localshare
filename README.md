@@ -56,4 +56,4 @@ LocalShare is a GNOME Shell extension that runs a small, self-contained Rust bac
 
 ## License
 
-MIT
+AGPL-3.0
