@@ -6,7 +6,7 @@ The receiving device needs nothing installed — just a browser (Android, iPhone
 
 ## Requirements
 
-- GNOME Shell 48, 49, or 50
+- GNOME Shell 48, 49, 50, or 51
 
 ## Usage
 
