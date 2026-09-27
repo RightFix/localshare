@@ -7,6 +7,11 @@
       <summary>Auto-start sharing</summary>
       <description>Start sharing automatically when GNOME Shell starts.</description>
     </key>
+    <key name="inhibit-suspend" type="b">
+      <default>true</default>
+      <summary>Keep running when idle</summary>
+      <description>Prevent automatic suspend while file sharing is active so transfers continue when the screen goes off.</description>
+    </key>
     <key name="notify-on-upload" type="b">
       <default>true</default>
       <summary>Notify on file upload</summary>

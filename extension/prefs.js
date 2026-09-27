@@ -126,6 +126,11 @@ export default class LocalSharePreferences extends ExtensionPreferences {
         settings.bind('auto-start', autoStartRow, 'active', Gio.SettingsBindFlags.DEFAULT);
         notifyGroup.add(autoStartRow);
 
+        let inhibitRow = new Adw.SwitchRow({ title: _('Keep running when idle') });
+        inhibitRow.set_subtitle(_('Prevent suspend while sharing so transfers continue when the screen goes off'));
+        settings.bind('inhibit-suspend', inhibitRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        notifyGroup.add(inhibitRow);
+
         page.add(notifyGroup);
 
         window.add(page);

@@ -15,6 +15,7 @@ import {
 } from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import { getSession, httpGet, httpPost, httpPut } from './services/http.js';
 import { init as initBackend, ensureBackend, stopBackend } from './services/backend.js';
+import { inhibit as _inhibitSharing, uninhibit as _uninhibitSharing } from './services/inhibit.js';
 
 const WS_RECONNECT_DELAY = 3000;
 const POLL_INTERVAL = 3000;
@@ -28,6 +29,26 @@ let wsReconnectId = null;
 let wsEnabled = false;
 let wsMessageId = 0;
 let wsClosedId = 0;
+let inhibitSettingId = 0;
+
+function _shouldInhibit() {
+    try {
+        return _settings && _settings.get_boolean('inhibit-suspend');
+    } catch (e) {
+        return true;
+    }
+}
+
+function _applyInhibit() {
+    if (_shouldInhibit())
+        _inhibitSharing('LocalShare file sharing active');
+    else
+        _uninhibitSharing();
+}
+
+function _releaseInhibit() {
+    _uninhibitSharing();
+}
 
 function _internalBase() {
     return 'http://127.0.0.1:' + _settings.get_int('internal-port');
@@ -53,6 +74,23 @@ export function enable(extension) {
     indicator = new LocalShareIndicator();
     Main.panel.addToStatusArea('localshare', indicator, 0, 'right');
 
+    if (inhibitSettingId === 0) {
+        try {
+            inhibitSettingId = _settings.connect('changed::inhibit-suspend', () => {
+                if (indicator && indicator._mode) {
+                    if (_shouldInhibit())
+                        _inhibitSharing('LocalShare file sharing active');
+                    else
+                        _releaseInhibit();
+                } else {
+                    _releaseInhibit();
+                }
+            });
+        } catch (e) {
+            log('[LocalShare] Inhibit setting signal error: ' + e);
+        }
+    }
+
     if (_settings.get_boolean('auto-start'))
         indicator._autoStart();
 }
@@ -61,6 +99,15 @@ export function disable() {
     log('[LocalShare] Disable');
     _stopPolling();
     _disconnectWS();
+    _releaseInhibit();
+    if (inhibitSettingId !== 0 && _settings) {
+        try {
+            _settings.disconnect(inhibitSettingId);
+        } catch (e) {
+            log('[LocalShare] Signal disconnect error: ' + e);
+        }
+        inhibitSettingId = 0;
+    }
     if (indicator) {
         for (let s of indicator._staticSignals) {
             try {
@@ -306,6 +353,7 @@ let LocalShareIndicator = GObject.registerClass(
                     this._clearPendingNotifications();
                     notify('Sharing Stopped', 'File sharing has been disabled');
                     this._mode = null;
+                    _releaseInhibit();
                     this._rebuildMenu();
                     break;
                 case 'upload_completed':
@@ -490,6 +538,7 @@ let LocalShareIndicator = GObject.registerClass(
                 _startPolling();
                 wsEnabled = true;
                 _connectWS();
+                _applyInhibit();
                 notify('LocalShare', 'Sharing started at ' + this._shareUrl);
             } catch (e) {
                 log('[LocalShare] Auto-start error: ' + e);
@@ -537,6 +586,7 @@ let LocalShareIndicator = GObject.registerClass(
                 _startPolling();
                 wsEnabled = true;
                 _connectWS();
+                _applyInhibit();
             } catch (e) {
                 log('[LocalShare] Send error: ' + e);
                 notify('LocalShare', 'Failed to start. Make sure the server is installed.');
@@ -555,6 +605,7 @@ let LocalShareIndicator = GObject.registerClass(
             this._shareUrl = null;
             _stopPolling();
             _disconnectWS();
+            _releaseInhibit();
             this._rebuildMenu();
             notify('LocalShare', 'No longer sending files');
         }
@@ -590,6 +641,7 @@ let LocalShareIndicator = GObject.registerClass(
                 _startPolling();
                 wsEnabled = true;
                 _connectWS();
+                _applyInhibit();
             } catch (e) {
                 log('[LocalShare] Receive error: ' + e);
                 notify('LocalShare', 'Failed to start. Make sure the server is installed.');
@@ -608,6 +660,7 @@ let LocalShareIndicator = GObject.registerClass(
             this._shareUrl = null;
             _stopPolling();
             _disconnectWS();
+            _releaseInhibit();
             this._rebuildMenu();
             notify('LocalShare', 'No longer receiving files');
         }
@@ -626,6 +679,7 @@ let LocalShareIndicator = GObject.registerClass(
                     this._shareUrl = null;
                     _stopPolling();
                     _disconnectWS();
+                    _releaseInhibit();
                     this._rebuildMenu();
                     return;
                 }
