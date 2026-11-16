@@ -9,6 +9,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import { Button as PanelMenuButton } from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import {
+    PopupBaseMenuItem,
     PopupMenuItem,
     PopupMenuSection,
     PopupSeparatorMenuItem
@@ -154,7 +155,7 @@ function _connectWS() {
         let uri = GLib.Uri.parse(_wsUrl(), GLib.UriFlags.NONE);
         let msg = new Soup.Message({ method: 'GET', uri: uri });
 
-        session.websocket_connect_async(msg, null, null, null, (session_, result) => {
+        session.websocket_connect_async(msg, null, null, GLib.PRIORITY_DEFAULT, null, (session_, result) => {
             try {
                 wsConnection = session_.websocket_connect_finish(result);
                 log('[LocalShare] WS connected');
@@ -268,11 +269,78 @@ let LocalShareIndicator = GObject.registerClass(
 
             this.menu.addMenuItem(new PopupSeparatorMenuItem());
 
+            this._textItem = this._buildTextItem();
+            this.menu.addMenuItem(this._textItem);
+
             let settingsItem = new PopupMenuItem('Settings');
             this._connectActivate(settingsItem, () => this._openSettings(), false);
             this.menu.addMenuItem(settingsItem);
 
             this._rebuildMenu();
+        }
+
+        _buildTextItem() {
+            let item = new PopupBaseMenuItem({ reactive: true, activate: false });
+
+            this._textEntry = new St.Entry({
+                hint_text: 'Send text\u2026',
+                style_class: 'localshare-text-entry',
+                can_focus: true,
+                x_expand: true
+            });
+            this._textEntry.clutter_text.connect('activate', () => {
+                this._sendTextEntry();
+            });
+            item.add_child(this._textEntry);
+
+            let sendButton = new St.Button({
+                label: 'Send',
+                style_class: 'localshare-text-send',
+                can_focus: true
+            });
+            sendButton.connect('clicked', () => {
+                this._sendTextEntry();
+            });
+            item.add_child(sendButton);
+
+            item.visible = true;
+            return item;
+        }
+
+        async _sendTextEntry() {
+            let text = this._textEntry.get_text();
+            if (!text || text.trim().length === 0) {
+                notify('LocalShare', 'Nothing to send.');
+                return;
+            }
+            try {
+                if (!this._mode) {
+                    let ok = await ensureBackend();
+                    if (!ok) {
+                        notify('LocalShare', 'Failed to start backend.');
+                        return;
+                    }
+                    await httpPost(_internalBase() + '/internal/start', this._buildStartPayload(null));
+                    let status = await httpGet(_internalBase() + '/internal/status');
+                    let ipsData = await httpGet(_internalBase() + '/internal/ips');
+                    let ips = ipsData.ips || [];
+                    let ip = ips.length > 0 ? ips[0] : 'localhost';
+                    this._shareUrl = 'http://' + ip + ':' + (status.port || _settings.get_int('port'));
+                    this._mode = 'receiving';
+                    _startPolling();
+                    wsEnabled = true;
+                    _connectWS();
+                    _applyInhibit();
+                    this._rebuildMenu();
+                    this._refresh();
+                }
+                await httpPost(_internalBase() + '/internal/send-text', { text: text });
+                this._textEntry.set_text('');
+                notify('LocalShare', 'Text sent to connected devices.');
+            } catch (e) {
+                log('[LocalShare] Send text error: ' + e);
+                notify('LocalShare', 'Failed to send text.');
+            }
         }
 
         _addDynamicItem(item) {
@@ -299,10 +367,6 @@ let LocalShareIndicator = GObject.registerClass(
                     reactive: false
                 });
                 this._addDynamicItem(urlItem);
-
-                let clipItem = new PopupMenuItem('Send Clipboard');
-                this._connectActivate(clipItem, () => this._sendClipboard());
-                this._addDynamicItem(clipItem);
             } else if (this._mode === 'receiving') {
                 let stopItem = new PopupMenuItem('Stop Receiving');
                 this._connectActivate(stopItem, () => this._onStop());
@@ -620,22 +684,6 @@ let LocalShareIndicator = GObject.registerClass(
             _releaseInhibit();
             this._rebuildMenu();
             notify('LocalShare', 'No longer sending files');
-        }
-
-        async _sendClipboard() {
-            try {
-                let clipboard = St.Clipboard.get_default();
-                let text = clipboard ? clipboard.get_text() : '';
-                if (!text || text.trim().length === 0) {
-                    notify('LocalShare', 'Clipboard is empty.');
-                    return;
-                }
-                await httpPost(_internalBase() + '/internal/send-text', { text: text });
-                notify('LocalShare', 'Clipboard sent: ' + (this._shareUrl || 'device'));
-            } catch (e) {
-                log('[LocalShare] Send clipboard error: ' + e);
-                notify('LocalShare', 'Failed to send clipboard.');
-            }
         }
 
         async _onReceive() {

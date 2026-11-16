@@ -122,6 +122,11 @@ function initUI() {
 
     document.getElementById('uploadBtn2').addEventListener('click', uploadFiles);
     document.getElementById('sendTextBtn').addEventListener('click', sendText);
+
+    const textInput = document.getElementById('textInput');
+    textInput.addEventListener('input', () => {
+        document.getElementById('sendTextBtn').disabled = textInput.value.trim().length === 0;
+    });
 }
 
 function handleFiles(files) {
@@ -259,12 +264,16 @@ async function sendText() {
             body: JSON.stringify({ text: text })
         });
         const data = await res.json();
-        if (res.ok) showAlert('success', 'Text sent: ' + (data.filename || 'clip'));
-        else showAlert('error', data.error || 'Failed to send text');
+        if (res.ok) {
+            showAlert('success', 'Text sent: ' + (data.filename || 'clip'));
+            textarea.value = '';
+        } else {
+            showAlert('error', data.error || 'Failed to send text');
+        }
     } catch (e) {
         showAlert('error', 'Failed to send text');
     }
-    btn.disabled = false;
+    btn.disabled = textarea.value.trim().length === 0;
     btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h8" /></svg> Send Text';
 }
 
