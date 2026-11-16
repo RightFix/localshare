@@ -52,6 +52,10 @@ fn serve_asset(path: &str, content_type: &str) -> Response {
                 header::CONTENT_TYPE,
                 content_type.parse().unwrap(),
             );
+            resp.headers_mut().insert(
+                header::CACHE_CONTROL,
+                "no-store, max-age=0".parse().unwrap(),
+            );
             resp
         }
         None => (StatusCode::NOT_FOUND, "Not Found").into_response(),
