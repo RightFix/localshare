@@ -121,6 +121,7 @@ function initUI() {
     });
 
     document.getElementById('uploadBtn2').addEventListener('click', uploadFiles);
+    document.getElementById('sendTextBtn').addEventListener('click', sendText);
 }
 
 function handleFiles(files) {
@@ -239,6 +240,32 @@ async function uploadFiles() {
     renderSelectedFiles();
     btn.disabled = false;
     btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload Files';
+}
+
+async function sendText() {
+    const textarea = document.getElementById('textInput');
+    const text = textarea.value;
+    if (!text || text.trim().length === 0) {
+        showAlert('error', 'Nothing to send');
+        return;
+    }
+    const btn = document.getElementById('sendTextBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px;"></span> Sending...';
+    try {
+        const res = await fetch(API_BASE + '/api/send-text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
+            body: JSON.stringify({ text: text })
+        });
+        const data = await res.json();
+        if (res.ok) showAlert('success', 'Text sent: ' + (data.filename || 'clip'));
+        else showAlert('error', data.error || 'Failed to send text');
+    } catch (e) {
+        showAlert('error', 'Failed to send text');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h8" /></svg> Send Text';
 }
 
 function renderBreadcrumb() {

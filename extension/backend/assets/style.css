@@ -330,6 +330,27 @@ body {
     margin-bottom: 8px;
 }
 
+.text-send {
+    margin-bottom: 16px;
+}
+
+.text-send .card-title {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.text-send textarea {
+    width: 100%;
+    padding: 12px;
+    background: var(--bg-secondary);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
 .file-list li .file-item-row {
     display: flex;
     align-items: center;

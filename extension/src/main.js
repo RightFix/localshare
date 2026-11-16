@@ -299,6 +299,10 @@ let LocalShareIndicator = GObject.registerClass(
                     reactive: false
                 });
                 this._addDynamicItem(urlItem);
+
+                let clipItem = new PopupMenuItem('Send Clipboard');
+                this._connectActivate(clipItem, () => this._sendClipboard());
+                this._addDynamicItem(clipItem);
             } else if (this._mode === 'receiving') {
                 let stopItem = new PopupMenuItem('Stop Receiving');
                 this._connectActivate(stopItem, () => this._onStop());
@@ -357,12 +361,20 @@ let LocalShareIndicator = GObject.registerClass(
                     this._rebuildMenu();
                     break;
                 case 'upload_completed':
-                    if (_settings.get_boolean('notify-on-upload'))
-                        notify('File Received', data.filename + ' from ' + (data.from_device || 'unknown'));
+                    if (_settings.get_boolean('notify-on-upload')) {
+                        let body = data.filename + ' from ' + (data.from_device || 'unknown');
+                        if (data.text)
+                            body = data.text;
+                        notify('File Received', body);
+                    }
                     break;
                 case 'download_completed':
-                    if (_settings.get_boolean('notify-on-download'))
-                        notify('File Downloaded', data.filename + ' by ' + (data.to_device || 'unknown'));
+                    if (_settings.get_boolean('notify-on-download')) {
+                        let body = data.filename + ' by ' + (data.to_device || 'unknown');
+                        if (data.text)
+                            body = data.text;
+                        notify('File Downloaded', body);
+                    }
                     break;
                 default:
                     break;
@@ -608,6 +620,22 @@ let LocalShareIndicator = GObject.registerClass(
             _releaseInhibit();
             this._rebuildMenu();
             notify('LocalShare', 'No longer sending files');
+        }
+
+        async _sendClipboard() {
+            try {
+                let clipboard = St.Clipboard.get_default();
+                let text = clipboard ? clipboard.get_text() : '';
+                if (!text || text.trim().length === 0) {
+                    notify('LocalShare', 'Clipboard is empty.');
+                    return;
+                }
+                await httpPost(_internalBase() + '/internal/send-text', { text: text });
+                notify('LocalShare', 'Clipboard sent: ' + (this._shareUrl || 'device'));
+            } catch (e) {
+                log('[LocalShare] Send clipboard error: ' + e);
+                notify('LocalShare', 'Failed to send clipboard.');
+            }
         }
 
         async _onReceive() {

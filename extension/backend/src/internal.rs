@@ -33,6 +33,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/internal/clients", get(clients))
         .route("/internal/ips", get(ips))
         .route("/internal/send-files", get(get_send_files).put(put_send_files))
+        .route("/internal/send-text", post(send_text))
         .route("/internal/ws/events", get(ws_events))
         .with_state(state)
 }
@@ -182,6 +183,21 @@ async fn put_send_files(State(state): State<Arc<AppState>>, Json(body): Json<Val
         })
         .collect::<Vec<_>>();
     Json(json!({ "status": "success", "files": files }))
+}
+
+async fn send_text(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<Value>,
+) -> Response {
+    let text = body.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if text.trim().is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "No text provided", None);
+    }
+    let filename = state.manager.send_text(&text).await;
+    if filename.is_empty() {
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to store text", None);
+    }
+    Json(json!({ "status": "success", "filename": filename, "text": text })).into_response()
 }
 
 async fn ws_events(State(state): State<Arc<AppState>>, ws: WebSocketUpgrade) -> Response {

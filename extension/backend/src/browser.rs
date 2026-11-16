@@ -36,6 +36,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/app.js", get(app_js))
         .route("/api/status", get(api_status))
         .route("/api/upload", post(api_upload))
+        .route("/api/send-text", post(api_send_text))
         .layer(DefaultBodyLimit::disable())
         .route("/api/files", get(api_list_files))
         .route("/api/files/{*filepath}", get(api_download_file))
@@ -208,7 +209,7 @@ async fn api_upload(
             .unwrap_or_else(|| "Unknown".into());
         state
             .manager
-            .notify_upload(&final_name, size, &device)
+            .notify_upload(&final_name, size, &device, None)
             .await;
         uploaded.push(final_name);
     }
@@ -221,6 +222,85 @@ async fn api_upload(
             .into_response();
     }
     Json(json!({ "message": format!("Uploaded: {}", uploaded.join(", ")) })).into_response()
+}
+
+async fn api_send_text(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let sid = match validate_session(&state.storage, &headers).await {
+        Some(s) => s,
+        None => {
+            return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Unauthorized" })))
+                .into_response()
+        }
+    };
+    if !verify_csrf(&headers) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "CSRF check failed" })),
+        )
+            .into_response()
+    }
+
+    let text = body.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if text.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "No text provided" })),
+        )
+            .into_response();
+    }
+
+    let config = state.storage.get_config().await;
+    let filename = format!("clip_{}.txt", crate::config::new_uuid());
+    let target = config.upload_dir.join(&filename);
+    if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let mut file = match tokio::fs::File::create(&target).await {
+        Ok(f) => f,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Write failed: {e}") })),
+            )
+                .into_response()
+        }
+    };
+    let mut write_failed = false;
+    if let Err(e) = file.write_all(text.as_bytes()).await {
+        eprintln!("Text upload write error: {e}");
+        write_failed = true;
+    }
+    if let Err(e) = file.flush().await {
+        eprintln!("Text upload flush error: {e}");
+        write_failed = true;
+    }
+    drop(file);
+    if write_failed {
+        let _ = tokio::fs::remove_file(&target).await;
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Upload failed" })),
+        )
+            .into_response();
+    }
+
+    let sessions = state.storage.get_sessions().await;
+    let device = sessions
+        .sessions
+        .iter()
+        .find(|s| s.id == sid)
+        .map(|s| s.device.clone())
+        .unwrap_or_else(|| "Unknown".into());
+    let size = text.len() as u64;
+    state
+        .manager
+        .notify_upload(&filename, size, &device, Some(text))
+        .await;
+    Json(json!({ "status": "success", "filename": filename })).into_response()
 }
 
 async fn api_list_files(
@@ -355,7 +435,7 @@ async fn api_download_file(
                 let size = std::fs::metadata(real).map(|m| m.len()).unwrap_or(0);
                 state
                     .manager
-                    .notify_download(&name, size, &device)
+                    .notify_download(&name, size, &device, None)
                     .await;
                 return file_response(real.clone(), &name);
             }
@@ -406,7 +486,7 @@ async fn api_download_file(
     let size = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
     state
         .manager
-        .notify_download(&name, size, &device)
+        .notify_download(&name, size, &device, None)
         .await;
     file_response(file_path, &name)
 }

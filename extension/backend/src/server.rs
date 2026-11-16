@@ -51,6 +51,20 @@ impl ServerManager {
         self.send_files.read().await.clone()
     }
 
+    pub async fn send_text(&self, text: &str) -> String {
+        let filename = format!("clip_{}.txt", crate::config::new_uuid());
+        let clips_dir = self.storage.data_dir.join("clips");
+        let _ = tokio::fs::create_dir_all(&clips_dir).await;
+        let path = clips_dir.join(&filename);
+        if let Err(e) = tokio::fs::write(&path, text).await {
+            eprintln!("Failed to write clip file {}: {e}", path.display());
+            return String::new();
+        }
+        let key = path.file_name().unwrap().to_string_lossy().to_string();
+        self.send_files.write().await.insert(key.clone(), path);
+        key
+    }
+
     fn build_send_map(paths: Vec<PathBuf>) -> HashMap<String, PathBuf> {
         let mut result: HashMap<String, PathBuf> = HashMap::new();
         for raw in paths {
@@ -278,33 +292,35 @@ impl ServerManager {
         true
     }
 
-    pub async fn notify_upload(&self, filename: &str, size: u64, from_device: &str) {
+    pub async fn notify_upload(&self, filename: &str, size: u64, from_device: &str, text: Option<String>) {
         self.storage
             .update_activity(|a| a.add_upload(filename, size, from_device))
             .await;
-        self.publish(
-            EVENT_FILE,
-            json!({
-                "action": ACTION_UPLOAD_COMPLETED,
-                "filename": filename,
-                "size": size,
-                "from_device": from_device,
-            }),
-        );
+        let mut payload = json!({
+            "action": ACTION_UPLOAD_COMPLETED,
+            "filename": filename,
+            "size": size,
+            "from_device": from_device,
+        });
+        if let Some(t) = &text {
+            payload["text"] = json!(t);
+        }
+        self.publish(EVENT_FILE, payload);
     }
 
-    pub async fn notify_download(&self, filename: &str, size: u64, to_device: &str) {
+    pub async fn notify_download(&self, filename: &str, size: u64, to_device: &str, text: Option<String>) {
         self.storage
             .update_activity(|a| a.add_download(filename, size, to_device))
             .await;
-        self.publish(
-            EVENT_FILE,
-            json!({
-                "action": ACTION_DOWNLOAD_COMPLETED,
-                "filename": filename,
-                "size": size,
-                "to_device": to_device,
-            }),
-        );
+        let mut payload = json!({
+            "action": ACTION_DOWNLOAD_COMPLETED,
+            "filename": filename,
+            "size": size,
+            "to_device": to_device,
+        });
+        if let Some(t) = &text {
+            payload["text"] = json!(t);
+        }
+        self.publish(EVENT_FILE, payload);
     }
 }
