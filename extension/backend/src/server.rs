@@ -8,7 +8,8 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 use crate::events::{
     ACTION_CLIENT_APPROVED, ACTION_CLIENT_CONNECTED, ACTION_CLIENT_DISCONNECTED,
     ACTION_CLIENT_REJECTED, ACTION_DOWNLOAD_COMPLETED, ACTION_SHARING_STOPPED,
-    ACTION_UPLOAD_COMPLETED, EVENT_CLIENT, EVENT_FILE, EventMsg,
+    ACTION_TEXT_RECEIVED, ACTION_UPLOAD_COMPLETED, EVENT_CLIENT, EVENT_FILE, EVENT_TEXT,
+    EventMsg,
 };
 use crate::models::Session;
 use crate::storage::{ArcStorage, StorageManager};
@@ -18,6 +19,8 @@ pub struct ServerManager {
     pub bus: broadcast::Sender<EventMsg>,
     lan: Mutex<Option<(tokio::task::JoinHandle<()>, u16)>>,
     send_files: RwLock<HashMap<String, PathBuf>>,
+    pending_texts: Mutex<Vec<String>>,
+    browser_sockets: std::sync::atomic::AtomicUsize,
 }
 
 impl ServerManager {
@@ -27,6 +30,8 @@ impl ServerManager {
             bus,
             lan: Mutex::new(None),
             send_files: RwLock::new(HashMap::new()),
+            pending_texts: Mutex::new(Vec::new()),
+            browser_sockets: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -51,18 +56,42 @@ impl ServerManager {
         self.send_files.read().await.clone()
     }
 
+    pub fn register_browser(&self) {
+        self.browser_sockets
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn unregister_browser(&self) {
+        self.browser_sockets
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub async fn take_pending_texts(&self) -> Vec<String> {
+        std::mem::take(&mut *self.pending_texts.lock().await)
+    }
+
+    /// Text sent from the PC is pushed to approved browser connections so the
+    /// phone can copy it directly. If no browser is connected, keep it queued
+    /// and deliver it the next time one is approved.
     pub async fn send_text(&self, text: &str) -> String {
         let filename = format!("clip_{}.txt", crate::config::new_uuid());
-        let clips_dir = self.storage.data_dir.join("clips");
-        let _ = tokio::fs::create_dir_all(&clips_dir).await;
-        let path = clips_dir.join(&filename);
-        if let Err(e) = tokio::fs::write(&path, text).await {
-            eprintln!("Failed to write clip file {}: {e}", path.display());
-            return String::new();
+        if self
+            .browser_sockets
+            .load(std::sync::atomic::Ordering::SeqCst)
+            == 0
+        {
+            self.pending_texts.lock().await.push(text.to_string());
+        } else {
+            self.publish(
+                EVENT_TEXT,
+                json!({
+                    "action": ACTION_TEXT_RECEIVED,
+                    "text": text,
+                    "filename": filename,
+                }),
+            );
         }
-        let key = path.file_name().unwrap().to_string_lossy().to_string();
-        self.send_files.write().await.insert(key.clone(), path);
-        key
+        filename
     }
 
     fn build_send_map(paths: Vec<PathBuf>) -> HashMap<String, PathBuf> {
@@ -176,7 +205,13 @@ impl ServerManager {
         let mut lan = self.lan.lock().await;
         Self::stop_lan_handle(&mut lan).await;
         drop(lan);
-        self.storage.disable_sharing().await;
+        // Keep approved sessions across a process restart so open browser
+        // tabs do not have to be approved again. Client records are
+        // connection-scoped, so those are cleared.
+        let mut config = self.storage.get_config().await;
+        config.sharing_enabled = false;
+        self.storage.save_config(&config).await;
+        self.storage.update_clients(|c| c.clear()).await;
     }
 
     pub async fn is_running(&self) -> bool {

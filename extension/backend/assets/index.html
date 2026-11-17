@@ -134,6 +134,19 @@
         </div>
     </div>
 
+    <div id="textModal" class="text-modal" style="display:none">
+        <div class="text-modal-card">
+            <div class="card-header">
+                <span class="card-title">Text received from PC</span>
+            </div>
+            <textarea id="receivedText" class="received-text" readonly rows="6"></textarea>
+            <div class="text-modal-actions">
+                <button type="button" class="btn" id="copyReceivedTextBtn">Copy</button>
+                <button type="button" class="btn btn-secondary" id="closeReceivedTextBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

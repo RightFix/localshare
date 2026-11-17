@@ -529,6 +529,7 @@ body {
     border: none;
     border-radius: var(--radius-sm);
     font-size: 0.85rem;
+    font-family: inherit;
     font-weight: 500;
     cursor: pointer;
     text-decoration: none;
@@ -543,9 +544,7 @@ body {
     text-align: center;
     padding: 40px 20px;
     color: var(--text-secondary);
-}
-
-.empty-state svg {
+}.empty-state svg {
     width: 48px;
     height: 48px;
     margin-bottom: 12px;
@@ -628,4 +627,49 @@ body {
         width: 100%;
         text-align: center;
     }
+}
+
+/* PC -> phone text popup */
+.text-modal {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1000;
+}
+
+.text-modal-card {
+    width: 100%;
+    max-width: 520px;
+    padding: 20px;
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.received-text {
+    width: 100%;
+    min-height: 120px;
+    margin: 12px 0;
+    padding: 12px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--text);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    resize: vertical;
+}
+
+.text-modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.text-modal-actions .btn {
+    padding: 8px 18px;
 }

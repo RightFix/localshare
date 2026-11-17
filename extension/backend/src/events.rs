@@ -9,6 +9,7 @@ pub struct EventMsg {
 // Event types published via the bus, consumed by extension and browser sockets.
 pub const EVENT_CLIENT: &str = "client";
 pub const EVENT_FILE: &str = "file";
+pub const EVENT_TEXT: &str = "text";
 
 // Action strings within client events.
 pub const ACTION_CLIENT_CONNECTED: &str = "client_connected";
@@ -20,6 +21,9 @@ pub const ACTION_SHARING_STOPPED: &str = "sharing_stopped";
 // Action strings within file events.
 pub const ACTION_UPLOAD_COMPLETED: &str = "upload_completed";
 pub const ACTION_DOWNLOAD_COMPLETED: &str = "download_completed";
+
+// Action strings within text events (PC -> browser).
+pub const ACTION_TEXT_RECEIVED: &str = "text_received";
 
 // WebSocket action strings sent to browser clients.
 pub const WS_ACTION_PENDING: &str = "pending";

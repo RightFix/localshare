@@ -1,6 +1,8 @@
 const API_BASE = '';
 let ws = null;
+let wsReconnectTimer = null;
 let sessionToken = null;
+let awaitingApproval = false;
 let selectedFiles = [];
 let currentPath = '';
 
@@ -16,6 +18,10 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function escapeAttr(text) {
+    return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function showAlert(type, message) {
@@ -34,12 +40,57 @@ function showView(viewId) {
     document.getElementById(viewId).style.display = 'block';
 }
 
+function showReceivedText(text) {
+    document.getElementById('receivedText').value = text;
+    document.getElementById('textModal').style.display = 'flex';
+}
+
+async function copyTextToClipboard(text) {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch (e) {}
+    const helper = document.createElement('textarea');
+    helper.value = text;
+    helper.setAttribute('readonly', '');
+    helper.style.position = 'fixed';
+    helper.style.top = '-1000px';
+    document.body.appendChild(helper);
+    helper.select();
+    helper.setSelectionRange(0, helper.value.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    helper.remove();
+    return ok;
+}
+
+function handleUnauthorized() {
+    if (awaitingApproval) return;
+    awaitingApproval = true;
+    sessionToken = null;
+    document.cookie = 'session_id=; Max-Age=0; path=/';
+    showView('waiting');
+    if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+    }
+    if (ws) {
+        const old = ws;
+        ws = null;
+        try { old.close(); } catch (e) {}
+    }
+    connectWebSocket();
+}
+
 async function checkStatus() {
     try {
         const res = await fetch(`${API_BASE}/api/status`);
         const data = await res.json();
         if (data.status === 'approved') {
             sessionToken = data.session_id;
+            awaitingApproval = false;
             showView('menu');
         } else if (data.status === 'denied') {
             document.getElementById('denied').style.display = 'block';
@@ -72,27 +123,35 @@ function deriveDeviceName(userAgent) {
 
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}/ws/client`);
-    ws.onopen = () => {
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws/client`);
+    ws = socket;
+    socket.onopen = () => {
         console.log('WS connected');
-        ws.send(JSON.stringify({
+        socket.send(JSON.stringify({
             device: deriveDeviceName(navigator.userAgent),
             ip: '',
             user_agent: navigator.userAgent
         }));
     };
-    ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.action === 'approved') {
             sessionToken = data.token;
+            awaitingApproval = false;
             document.cookie = `session_id=${data.token}; path=/; SameSite=Lax`;
             showView('menu');
         } else if (data.action === 'rejected') {
+            awaitingApproval = false;
             document.getElementById('denied').style.display = 'block';
+        } else if (data.action === 'text_received' && typeof data.text === 'string') {
+            showReceivedText(data.text);
         }
     };
-    ws.onclose = () => setTimeout(connectWebSocket, 3000);
-    ws.onerror = () => {};
+    socket.onclose = () => {
+        if (ws !== socket) return;
+        wsReconnectTimer = setTimeout(connectWebSocket, 3000);
+    };
+    socket.onerror = () => {};
 }
 
 function initUI() {
@@ -126,6 +185,16 @@ function initUI() {
     const textInput = document.getElementById('textInput');
     textInput.addEventListener('input', () => {
         document.getElementById('sendTextBtn').disabled = textInput.value.trim().length === 0;
+    });
+
+    document.getElementById('copyReceivedTextBtn').addEventListener('click', async () => {
+        const value = document.getElementById('receivedText').value;
+        if (!value) return;
+        const ok = await copyTextToClipboard(value);
+        showAlert(ok ? 'success' : 'error', ok ? 'Copied to clipboard' : 'Copy failed — select the text manually');
+    });
+    document.getElementById('closeReceivedTextBtn').addEventListener('click', () => {
+        document.getElementById('textModal').style.display = 'none';
     });
 }
 
@@ -208,6 +277,10 @@ function uploadFileWithProgress(file, index) {
                 progressBar.value = 100;
                 progressText.textContent = '✓ Done';
                 resolve(true);
+            } else if (xhr.status === 401) {
+                progressText.textContent = '✗ Session expired';
+                handleUnauthorized();
+                resolve(false);
             } else {
                 progressText.textContent = '✗ Failed';
                 resolve(false);
@@ -263,18 +336,51 @@ async function sendText() {
             headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
             body: JSON.stringify({ text: text })
         });
-        const data = await res.json();
-        if (res.ok) {
-            showAlert('success', 'Text sent: ' + (data.filename || 'clip'));
-            textarea.value = '';
+        if (res.status === 401) {
+            handleUnauthorized();
+            showAlert('error', 'Session expired. Waiting for approval…');
         } else {
-            showAlert('error', data.error || 'Failed to send text');
+            const data = await res.json();
+            if (res.ok) {
+                showAlert('success', 'Text sent: ' + (data.filename || 'clip'));
+                textarea.value = '';
+            } else {
+                showAlert('error', data.error || 'Failed to send text');
+            }
         }
     } catch (e) {
         showAlert('error', 'Failed to send text');
     }
     btn.disabled = textarea.value.trim().length === 0;
     btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h8" /></svg> Send Text';
+}
+
+async function downloadFile(path) {
+    try {
+        const res = await fetch(`${API_BASE}/api/files/${encodeURIComponent(path)}`, {
+            headers: { 'X-Session-Token': sessionToken }
+        });
+        if (res.status === 401) {
+            handleUnauthorized();
+            showAlert('error', 'Session expired. Waiting for approval…');
+            return;
+        }
+        if (!res.ok) {
+            showAlert('error', 'Download failed');
+            return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = path.split('/').pop() || 'download';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) {
+        showAlert('error', 'Download failed');
+    }
 }
 
 function renderBreadcrumb() {
@@ -303,6 +409,11 @@ async function loadFiles() {
         const res = await fetch(`${API_BASE}/api/files${pathParam}`, {
             headers: { 'X-Session-Token': sessionToken }
         });
+        if (res.status === 401) {
+            handleUnauthorized();
+            list.innerHTML = '<li class="empty-state">Waiting for approval…</li>';
+            return;
+        }
         const files = await res.json();
         renderBreadcrumb();
         if (!Array.isArray(files) || files.length === 0) {
@@ -337,10 +448,15 @@ async function loadFiles() {
                         <div class="filesize">${formatSize(f.size)}</div>
                     </div>
                 </div>
-                <a href="${API_BASE}/api/files/${encodeURIComponent(f.path)}" 
-                   class="download-btn" download>Download</a>
+                <button type="button" class="download-btn" data-download="${escapeAttr(f.path)}">Download</button>
             </li>`;
         }).join('');
+        list.querySelectorAll('.download-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                downloadFile(btn.dataset.download);
+            });
+        });
         list.querySelectorAll('li[data-path]').forEach(li => {
             li.addEventListener('click', () => {
                 currentPath = li.dataset.path;

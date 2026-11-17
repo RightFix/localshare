@@ -8,7 +8,7 @@ use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Multipart, Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
@@ -20,8 +20,8 @@ use tokio_util::io::ReaderStream;
 use crate::auth::{get_session_id, validate_session, verify_csrf};
 use crate::config::{lexical_resolve, now_iso};
 use crate::events::{
-    ACTION_CLIENT_APPROVED, ACTION_CLIENT_REJECTED, EVENT_CLIENT, WS_ACTION_APPROVED,
-    WS_ACTION_PENDING, WS_ACTION_REJECTED,
+    ACTION_CLIENT_APPROVED, ACTION_CLIENT_REJECTED, ACTION_TEXT_RECEIVED, EVENT_CLIENT,
+    EVENT_TEXT, WS_ACTION_APPROVED, WS_ACTION_PENDING, WS_ACTION_REJECTED,
 };
 use crate::AppState;
 
@@ -59,6 +59,59 @@ fn serve_asset(path: &str, content_type: &str) -> Response {
             resp
         }
         None => (StatusCode::NOT_FOUND, "Not Found").into_response(),
+    }
+}
+
+fn unauthorized_response(headers: &HeaderMap) -> Response {
+    let wants_html = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("text/html"))
+        .unwrap_or(false);
+
+    if wants_html {
+        let body = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LocalShare - Session expired</title>
+<style>
+body { font-family: system-ui, sans-serif; background: #1c1c1c; color: #eee; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+.box { max-width: 420px; padding: 32px; text-align: center; }
+h1 { font-size: 20px; margin-bottom: 12px; }
+p { color: #aaa; margin-bottom: 24px; }
+a { display: inline-block; padding: 10px 20px; border-radius: 8px; background: #3584e4; color: #fff; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="box">
+<h1>Session expired</h1>
+<p>Your connection needs to be approved again. Returning to the start&hellip;</p>
+<a href="/">Continue</a>
+</div>
+<script>
+document.cookie = 'session_id=; Max-Age=0; path=/';
+setTimeout(function () { window.location.replace('/'); }, 1200);
+</script>
+</body>
+</html>"#;
+        let mut resp = (StatusCode::UNAUTHORIZED, Html(body)).into_response();
+        resp.headers_mut().insert(
+            header::SET_COOKIE,
+            "session_id=; Max-Age=0; Path=/; SameSite=Lax"
+                .parse()
+                .unwrap(),
+        );
+        resp.headers_mut()
+            .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+        resp
+    } else {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Unauthorized" })),
+        )
+            .into_response()
     }
 }
 
@@ -109,10 +162,7 @@ async fn api_upload(
 ) -> Response {
     let sid = match validate_session(&state.storage, &headers).await {
         Some(s) => s,
-        None => {
-            return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Unauthorized" })))
-                .into_response()
-        }
+        None => return unauthorized_response(&headers),
     };
     if !verify_csrf(&headers) {
         return (
@@ -235,10 +285,7 @@ async fn api_send_text(
 ) -> Response {
     let sid = match validate_session(&state.storage, &headers).await {
         Some(s) => s,
-        None => {
-            return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Unauthorized" })))
-                .into_response()
-        }
+        None => return unauthorized_response(&headers),
     };
     if !verify_csrf(&headers) {
         return (
@@ -313,11 +360,7 @@ async fn api_list_files(
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     if validate_session(&state.storage, &headers).await.is_none() {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Unauthorized" })),
-        )
-            .into_response();
+        return unauthorized_response(&headers);
     }
 
     let path = params.get("path").cloned().unwrap_or_default();
@@ -415,10 +458,7 @@ async fn api_download_file(
 ) -> Response {
     let sid = match validate_session(&state.storage, &headers).await {
         Some(s) => s,
-        None => {
-            return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Unauthorized" })))
-                .into_response()
-        }
+        None => return unauthorized_response(&headers),
     };
 
     if !filepath.contains('/') {
@@ -527,14 +567,78 @@ fn file_response(path: PathBuf, name: &str) -> Response {
 
 async fn ws_client(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     ws: WebSocketUpgrade,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
 ) -> Response {
-    ws.on_upgrade(move |socket| handle_browser_ws(socket, state, peer))
+    ws.on_upgrade(move |socket| handle_browser_ws(socket, state, peer, headers))
 }
 
-async fn handle_browser_ws(socket: WebSocket, state: Arc<AppState>, peer: SocketAddr) {
+struct BrowserSocketGuard(Arc<AppState>);
+
+impl Drop for BrowserSocketGuard {
+    fn drop(&mut self) {
+        self.0.manager.unregister_browser();
+    }
+}
+
+async fn deliver_pending_texts(
+    state: &Arc<AppState>,
+    sink: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+) {
+    for text in state.manager.take_pending_texts().await {
+        let msg = json!({ "action": ACTION_TEXT_RECEIVED, "text": text });
+        if sink.send(Message::Text(msg.to_string().into())).await.is_err() {
+            return;
+        }
+    }
+}
+
+async fn handle_browser_ws(
+    socket: WebSocket,
+    state: Arc<AppState>,
+    peer: SocketAddr,
+    headers: HeaderMap,
+) {
     let (mut sink, mut stream) = socket.split();
+
+    // If this browser already holds a valid approved session, do not ask for
+    // approval again. Reconnects (page reload, phone waking up, backend
+    // restart) simply resume the existing session.
+    if let Some(sid) = validate_session(&state.storage, &headers).await {
+        let msg = json!({ "action": WS_ACTION_APPROVED, "token": sid });
+        if sink.send(Message::Text(msg.to_string().into())).await.is_err() {
+            return;
+        }
+        state.manager.register_browser();
+        let _guard = BrowserSocketGuard(state.clone());
+        deliver_pending_texts(&state, &mut sink).await;
+        let mut rx = state.manager.bus.subscribe();
+        loop {
+            tokio::select! {
+                msg = stream.next() => {
+                    match msg {
+                        Some(Ok(Message::Ping(p))) => {
+                            if sink.send(Message::Pong(p)).await.is_err() {
+                                return;
+                            }
+                        }
+                        Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
+                        _ => {}
+                    }
+                }
+                evt = rx.recv() => {
+                    if let Ok(e) = evt {
+                        if e.event == EVENT_TEXT
+                            && sink.send(Message::Text(e.data.to_string().into())).await.is_err()
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     let first: Option<String> = loop {
         match stream.next().await {
@@ -585,6 +689,7 @@ async fn handle_browser_ws(socket: WebSocket, state: Arc<AppState>, peer: Socket
 
     let mut rx = state.manager.bus.subscribe();
     let mut session_id: Option<String> = None;
+    let mut browser_guard: Option<BrowserSocketGuard> = None;
 
     loop {
         tokio::select! {
@@ -601,6 +706,12 @@ async fn handle_browser_ws(socket: WebSocket, state: Arc<AppState>, peer: Socket
                 match evt {
                     Ok(e) => {
                         let d = &e.data;
+                        if e.event == EVENT_TEXT {
+                            if sink.send(Message::Text(d.to_string().into())).await.is_err() {
+                                break;
+                            }
+                            continue;
+                        }
                         if d.get("client_id").and_then(|v| v.as_str()) != Some(client_id.as_str()) {
                             continue;
                         }
@@ -615,6 +726,9 @@ async fn handle_browser_ws(socket: WebSocket, state: Arc<AppState>, peer: Socket
                                 if sink.send(Message::Text(msg.to_string().into())).await.is_err() {
                                     break;
                                 }
+                                state.manager.register_browser();
+                                browser_guard = Some(BrowserSocketGuard(state.clone()));
+                                deliver_pending_texts(&state, &mut sink).await;
                             } else if action == Some(ACTION_CLIENT_REJECTED) {
                                 if sink.send(Message::Text(json!({ "action": WS_ACTION_REJECTED }).to_string().into())).await.is_err() {
                                     break;
@@ -628,15 +742,19 @@ async fn handle_browser_ws(socket: WebSocket, state: Arc<AppState>, peer: Socket
         }
     }
 
+    drop(browser_guard);
     let _ = sink.close().await;
 
-    if let Some(sid) = session_id {
-        let _ = state.manager.disconnect_client(&sid).await;
-    } else {
-        let sessions = state.storage.get_sessions().await;
-        if let Some(s) = sessions.sessions.iter().find(|x| x.client_id == client_id) {
-            let _ = state.manager.disconnect_client(&s.id).await;
-        }
-        let _ = state.manager.remove_pending_client(&client_id).await;
-    }
+    // Do not delete the approved session when the socket closes: phones
+    // background tabs, sleep, or briefly lose Wi-Fi, and deleting the
+    // session here made later downloads fail with 401. Sessions remain
+    // valid until sharing is stopped (or explicitly disconnected).
+    let _ = session_id;
+    state
+        .storage
+        .update_clients(|c| {
+            c.remove_connected(&client_id);
+        })
+        .await;
+    let _ = state.manager.remove_pending_client(&client_id).await;
 }
