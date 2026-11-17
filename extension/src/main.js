@@ -1,8 +1,10 @@
 'use strict';
 
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 import Soup from 'gi://Soup';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -285,18 +287,33 @@ let LocalShareIndicator = GObject.registerClass(
             this._textEntry = new St.Entry({
                 hint_text: 'Send text\u2026',
                 style_class: 'localshare-text-entry',
-                can_focus: true,
-                x_expand: true
+                can_focus: true
             });
-            this._textEntry.clutter_text.connect('activate', () => {
-                this._sendTextEntry();
+            let clutterText = this._textEntry.clutter_text;
+            clutterText.single_line_mode = false;
+            clutterText.line_wrap = true;
+            clutterText.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+            clutterText.connect('text-changed', () => {
+                this._resizeTextEntry();
+            });
+            clutterText.connect('key-press-event', (actor, event) => {
+                const symbol = event.get_key_symbol();
+                if (symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter) {
+                    const state = event.get_state();
+                    if ((state & Clutter.ModifierType.SHIFT_MASK) === 0) {
+                        this._sendTextEntry();
+                        return Clutter.EVENT_STOP;
+                    }
+                }
+                return Clutter.EVENT_PROPAGATE;
             });
             item.add_child(this._textEntry);
 
             let sendButton = new St.Button({
                 label: 'Send',
                 style_class: 'localshare-text-send',
-                can_focus: true
+                can_focus: true,
+                y_align: Clutter.ActorAlign.CENTER
             });
             sendButton.connect('clicked', () => {
                 this._sendTextEntry();
@@ -305,6 +322,28 @@ let LocalShareIndicator = GObject.registerClass(
 
             item.visible = true;
             return item;
+        }
+
+        _resizeTextEntry() {
+            if (!this._textEntry)
+                return;
+
+            // The entry has a fixed width (see stylesheet), so measure how
+            // tall the wrapped text needs to be and grow up to a limit.
+            const width = this._textEntry.width > 0 ? this._textEntry.width : 140;
+            const textWidth = Math.max(40, width - 16);
+            const [, natural] = this._textEntry.clutter_text.get_preferred_height(textWidth);
+
+            const text = this._textEntry.get_text();
+            const charsPerLine = Math.max(8, Math.floor(textWidth / 7));
+            let lines = 0;
+            for (const line of text.split('\n'))
+                lines += Math.max(1, Math.ceil(line.length / charsPerLine));
+            const estimated = lines * 18;
+
+            const height = Math.min(180,
+                Math.max(30, Math.max(Math.ceil(natural), estimated) + 12));
+            this._textEntry.set_style(`min-height: ${height}px;`);
         }
 
         async _sendTextEntry() {

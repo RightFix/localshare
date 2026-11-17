@@ -17,12 +17,15 @@
 }
 
 .localshare-text-entry {
-    min-width: 180px;
+    width: 140px;
+    min-width: 140px;
+    max-width: 140px;
+    min-height: 30px;
 }
 
 .localshare-text-send {
-    margin-left: 8px;
-    padding: 4px 12px;
+    margin-left: 4px;
+    padding: 4px 8px;
     border-radius: 6px;
 }
 
