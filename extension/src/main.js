@@ -293,18 +293,31 @@ let LocalShareIndicator = GObject.registerClass(
             clutterText.single_line_mode = false;
             clutterText.line_wrap = true;
             clutterText.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+            clutterText.editable = true;
             clutterText.connect('text-changed', () => {
                 this._resizeTextEntry();
             });
             clutterText.connect('key-press-event', (actor, event) => {
                 const symbol = event.get_key_symbol();
+                const state = event.get_state();
                 if (symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter) {
-                    const state = event.get_state();
                     if ((state & Clutter.ModifierType.SHIFT_MASK) === 0) {
                         this._sendTextEntry();
                         return Clutter.EVENT_STOP;
                     }
+                } else if ((state & Clutter.ModifierType.CONTROL_MASK) &&
+                           (symbol === Clutter.KEY_v || symbol === Clutter.KEY_V)) {
+                    St.Clipboard.get_default().get_text(
+                        St.ClipboardType.CLIPBOARD, (_cb, text) => {
+                            if (text)
+                                actor.insert_text(text, actor.get_cursor_position());
+                        });
+                    return Clutter.EVENT_STOP;
                 }
+                return Clutter.EVENT_PROPAGATE;
+            });
+            item.connect('button-press-event', () => {
+                this._textEntry.grab_key_focus();
                 return Clutter.EVENT_PROPAGATE;
             });
             item.add_child(this._textEntry);
